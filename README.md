@@ -1,32 +1,120 @@
-# Based Scrabble Backend
+# Scrabble Backend
 
-## Setup
+A Node.js/Express backend API for a multiplayer Scrabble game with MySQL database integration and real-time web dashboard.
 
-1. **Clone the repository**
+## Features
 
-   git clone <repo-url>
-   cd scrabble-backend
+- **RESTful API** for game management
+- **MySQL Database** with Sequelize ORM
+- **Real-time Dashboard** with statistics and management
+- **Cross-platform Setup** (Windows, macOS, Linux)
+- **Docker Support** for easy deployment
+- **Database Migrations & Seeding**
 
-2. Install dependencies
+## Quick Start
 
-npm install
+1. **Install Dependencies**
+   ```bash
+   npm install
+   ```
 
-This will generate/update package-lock.json for your environment.
+2. **Set up Database** (see [SETUP.md](SETUP.md) for platform-specific instructions)
 
-3. Environment variables
+3. **Run Migrations & Seed Data**
+   ```bash
+   npm run setup
+   ```
 
-Copy .env.example to .env
+4. **Start Server**
+   ```bash
+   npm start
+   ```
 
-Update the variables inside .env with your local or production values.
+5. **Access Dashboard**
+   Open http://localhost:3000 in your browser
 
-4. Start the development server
+## API Endpoints
 
-npm start
+### Health & Status
+- `GET /` - API status and info
+- `GET /api/health` - Health check with database status
 
-or, if available:
+### Users
+- `GET /api/users` - List all players
+- `POST /api/users` - Create new player
 
-npm run dev
+### Games  
+- `GET /api/games` - List all games
+- `POST /api/games` - Create new game
+- `GET /api/games/:id` - Get game details
 
+### Statistics
+- `GET /api/stats` - Game statistics dashboard
+
+## Environment Variables
+
+Create a `.env` file with:
+
+```env
+PORT=3000
+NODE_ENV=development
+
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=scrabble_db
+DB_USER=root
+DB_PASSWORD=your-password
+
+# JWT Secret (for future authentication)
+JWT_SECRET=your-secret-key-here
+
+# CORS Origins
+CORS_ORIGIN=http://localhost:3000,http://localhost:3001
+```
+
+## Scripts
+
+- `npm start` - Start the server
+- `npm run migrate` - Run database migrations
+- `npm run seed` - Seed database with sample data
+- `npm run setup` - Run migration and seeding together
+
+## Database Models
+
+- **User** - Player accounts and statistics
+- **Game** - Game sessions and state
+- **GamePlayer** - Player participation in games
+- **Move** - Individual game moves and scoring
+
+## Cross-Platform Setup
+
+See [SETUP.md](SETUP.md) for detailed setup instructions for:
+- Windows (MySQL Installer, Chocolatey)
+- macOS (Homebrew, MySQL Installer)
+- Linux (apt, dnf, yum)
+- Docker (Cross-platform)
+
+## Development
+
+The server runs in development mode with:
+- Database connection testing
+- Automatic model loading
+- Error handling and logging
+- CORS enabled for frontend development
+
+## Team Collaboration
+
+This project is designed to work across different operating systems. Team members can use their preferred development environment while maintaining consistency through:
+
+- Cross-platform documentation
+- Environment-based configuration
+- Docker containerization option
+- Standardized npm scripts
+
+## Troubleshooting
+
+Common issues and solutions are documented in [SETUP.md](SETUP.md) for each platform.
 
 -------------------------------------
 Notes
