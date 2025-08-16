@@ -135,10 +135,40 @@ npm start
 ### Users
 - `GET /api/users` - Get all users
 - `POST /api/users` - Create new user
+  ```json
+  {
+    "username": "string (required, unique)",
+    "email": "string (required, unique, valid email)",
+    "password": "string (required)"
+  }
+  ```
+  **Example:**
+  ```bash
+  curl -X POST http://localhost:3000/api/users \
+    -H "Content-Type: application/json" \
+    -d '{
+      "username": "newplayer",
+      "email": "newplayer@example.com",
+      "password": "securepassword123"
+    }'
+  ```
 
 ### Games
 - `GET /api/games` - Get all games
 - `POST /api/games` - Create new game
+  ```json
+  {
+    "maxPlayers": "number (optional, default: 4, range: 2-4)"
+  }
+  ```
+  **Example:**
+  ```bash
+  curl -X POST http://localhost:3000/api/games \
+    -H "Content-Type: application/json" \
+    -d '{
+      "maxPlayers": 2
+    }'
+  ```
 - `GET /api/games/:id` - Get game details
 
 ### Statistics

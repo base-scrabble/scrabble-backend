@@ -11,9 +11,13 @@ const migrate = async () => {
       throw new Error('Database connection failed');
     }
 
-    // Sync all models
-    await sequelize.sync({ force: false, alter: true });
+    // Import models to ensure they're loaded
+    require('../models');
+    
+    // Sync all models with force: true to recreate tables
+    await sequelize.sync({ force: true });
     console.log('✅ Database migration completed successfully!');
+    console.log('📋 Tables created: users, games, game_players, moves');
     
     process.exit(0);
   } catch (error) {
