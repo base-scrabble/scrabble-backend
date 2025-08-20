@@ -53,3 +53,5 @@ mysql-*.deb
 # Temporary files
 *.tmp
 *.temp
+
+/generated/prisma
