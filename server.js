@@ -1,12 +1,27 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const http = require('http');
+const socketIo = require('socket.io');
 require('dotenv').config();
 
-const { testConnection } = require('./config/database');
+const { sequelize } = require('./config/database');
+const models = require('./models');
 const { User, Game, GamePlayer, Move } = require('./models');
 
+// Import routes
+const exampleRoutes = require('./routes/exampleRoutes');
+const wordRoutes = require('./routes/wordRoutes');
+const authRoutes = require('./routes/authRoutes');
+
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN?.split(',') || ["http://localhost:3000", "http://localhost:3001"],
+    methods: ["GET", "POST"]
+  }
+});
 const PORT = process.env.PORT || 3000;
 
 // Middleware
@@ -190,6 +205,50 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+// Routes
+app.use('/api/words', wordRoutes);
+app.use('/api/auth', authRoutes);
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log(`🔌 User connected: ${socket.id}`);
+  
+  // Join game room
+  socket.on('join-game', (gameId) => {
+    socket.join(`game-${gameId}`);
+    console.log(`👤 User ${socket.id} joined game ${gameId}`);
+  });
+  
+  // Leave game room
+  socket.on('leave-game', (gameId) => {
+    socket.leave(`game-${gameId}`);
+    console.log(`👋 User ${socket.id} left game ${gameId}`);
+  });
+  
+  // Handle game moves
+  socket.on('game-move', (data) => {
+    const { gameId, move } = data;
+    // Broadcast move to all players in the game
+    socket.to(`game-${gameId}`).emit('move-made', move);
+  });
+  
+  // Handle chat messages
+  socket.on('chat-message', (data) => {
+    const { gameId, message, username } = data;
+    // Broadcast message to all players in the game
+    io.to(`game-${gameId}`).emit('chat-message', {
+      username,
+      message,
+      timestamp: new Date().toISOString()
+    });
+  });
+  
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log(`🔌 User disconnected: ${socket.id}`);
+  });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -206,6 +265,18 @@ app.use('*', (req, res) => {
     path: req.originalUrl
   });
 });
+
+// Test database connection function
+const testConnection = async () => {
+  try {
+    await sequelize.authenticate();
+    console.log('✅ Database connection established successfully.');
+    return true;
+  } catch (error) {
+    console.error('❌ Unable to connect to the database:', error.message);
+    return false;
+  }
+};
 
 // Initialize database and start server
 const startServer = async () => {
@@ -228,12 +299,13 @@ const startServer = async () => {
     }
     
     // Start server
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`🎮 Scrabble Backend running on port ${PORT}`);
       console.log(`📍 Health check: http://localhost:${PORT}/api/health`);
       console.log(`🌐 API root: http://localhost:${PORT}/`);
       console.log(`🎯 Frontend Dashboard: http://localhost:${PORT}/`);
       console.log(`💾 Database: ${dbConnected ? '✅ Connected' : '❌ Disconnected'}`);
+      console.log(`🔌 Socket.IO enabled for real-time gameplay`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error.message);

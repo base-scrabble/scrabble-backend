@@ -12,15 +12,16 @@
     "test": "vitest"
   },
   "dependencies": {
-    "axios": "^1.11.0",
+    "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
-    "dayjs": "^1.11.13",
-    "dotenv": "^17.2.1",
-    "express": "^4.21.2",
-    "mysql2": "^3.14.3",
-    "react-icons": "^5.5.0",
-    "react-toastify": "^11.0.5",
-    "sequelize": "^6.37.7"
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.11.3",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.3",
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",

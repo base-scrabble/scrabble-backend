@@ -1,11 +1,15 @@
 # Scrabble Backend
 
-A Node.js/Express backend API for a multiplayer Scrabble game with MySQL database integration and real-time web dashboard.
+A Node.js/Express backend API for a multiplayer Scrabble game with PostgreSQL database integration, real-time gameplay, JWT authentication, and comprehensive word validation.
 
 ## Features
 
 - **RESTful API** for game management
-- **MySQL Database** with Sequelize ORM
+- **PostgreSQL Database** with Sequelize ORM
+- **Real-time Gameplay** with Socket.IO
+- **JWT Authentication** with bcrypt password hashing
+- **Word Validation** with comprehensive Scrabble dictionary
+- **File Upload Support** for user avatars (Multer)
 - **Real-time Dashboard** with statistics and management
 - **Cross-platform Setup** (Windows, macOS, Linux)
 - **Docker Support** for easy deployment
@@ -33,11 +37,48 @@ A Node.js/Express backend API for a multiplayer Scrabble game with MySQL databas
 5. **Access Dashboard**
    Open http://localhost:3000 in your browser
 
+## Tech Stack
+
+### Backend
+- **Node.js** - JavaScript runtime
+- **Express.js** - Web framework for RESTful APIs
+- **PostgreSQL** - Primary database
+- **Sequelize** - ORM for database operations
+
+### Authentication & Security
+- **JWT (JSON Web Tokens)** - Stateless authentication
+- **Bcrypt** - Password hashing and verification
+
+### Real-time Features
+- **Socket.IO** - Real-time bidirectional communication
+- **WebSocket** - Live gameplay and chat
+
+### File Handling
+- **Multer** - File upload middleware for avatars
+
+### Development Tools
+- **ESLint** - Code linting
+- **Prettier** - Code formatting
+- **Vitest** - Testing framework
+
 ## API Endpoints
 
 ### Health & Status
 - `GET /` - API status and info
 - `GET /api/health` - Health check with database status
+
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - User login
+- `GET /api/auth/profile` - Get user profile (protected)
+- `PUT /api/auth/profile` - Update user profile (protected)
+- `POST /api/auth/change-password` - Change password (protected)
+
+### Word Validation
+- `GET /api/words/validate/:word` - Validate single word
+- `POST /api/words/validate` - Validate multiple words
+- `GET /api/words/search?pattern=` - Search words by pattern
+- `GET /api/words/stats` - Dictionary statistics
 
 ### Users
 - `GET /api/users` - List all players
@@ -90,8 +131,8 @@ CORS_ORIGIN=http://localhost:3000,http://localhost:3001
 ## Cross-Platform Setup
 
 See [SETUP.md](SETUP.md) for detailed setup instructions for:
-- Windows (MySQL Installer, Chocolatey)
-- macOS (Homebrew, MySQL Installer)
+- Windows (PostgreSQL Installer, Chocolatey)
+- macOS (Homebrew, PostgreSQL Installer)
 - Linux (apt, dnf, yum)
 - Docker (Cross-platform)
 

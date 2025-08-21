@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - Node.js 18+ installed
-- MySQL 8.0+ (for database functionality)
+- PostgreSQL 12+ (for database functionality)
 
 ## Quick Setup
 
@@ -13,83 +13,79 @@ npm install
 
 ### 2. Database Setup Options
 
-#### Option A: Install MySQL Locally (Recommended)
+#### Option A: Install PostgreSQL Locally (Recommended)
 
 **Windows:**
 ```bash
-# Download and install from: https://dev.mysql.com/downloads/installer/
+# Download and install from: https://www.postgresql.org/download/windows/
 # Or use Chocolatey:
-choco install mysql
+choco install postgresql
 
-# Start MySQL service
-net start mysql80
+# Start PostgreSQL service
+net start postgresql-x64-15
 # Or through Services app: services.msc
 
 # Create database
-mysql -u root -p
+psql -U postgres
 CREATE DATABASE scrabble_db;
-exit
+\q
 ```
 
 **macOS:**
 ```bash
 # Install using Homebrew:
-brew install mysql
+brew install postgresql@15
 
-# Or download from: https://dev.mysql.com/downloads/mysql/
-
-# Start MySQL service
-brew services start mysql
+# Start PostgreSQL service
+brew services start postgresql@15
 # Or manually:
-sudo /usr/local/mysql/support-files/mysql.server start
+pg_ctl -D /usr/local/var/postgres start
 
 # Create database
-mysql -u root -p
+psql -U postgres
 CREATE DATABASE scrabble_db;
-exit
+\q
 ```
 
 **Linux (Ubuntu/Debian):**
 ```bash
-# Install MySQL
+# Install PostgreSQL
 sudo apt update
-sudo apt install mysql-server
+sudo apt install postgresql postgresql-contrib
 
-# Start MySQL service
-sudo systemctl start mysql
-sudo systemctl enable mysql
-
-# Secure installation (optional but recommended)
-sudo mysql_secure_installation
+# Start PostgreSQL service
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
 
 # Create database
-sudo mysql -u root -p
+sudo -u postgres psql
 CREATE DATABASE scrabble_db;
-exit
+\q
 ```
 
 **Linux (CentOS/RHEL/Fedora):**
 ```bash
-# Install MySQL
-sudo dnf install mysql-server  # Fedora
+# Install PostgreSQL
+sudo dnf install postgresql postgresql-server  # Fedora
 # OR
-sudo yum install mysql-server  # CentOS/RHEL
+sudo yum install postgresql postgresql-server  # CentOS/RHEL
 
-# Start MySQL service
-sudo systemctl start mysqld
-sudo systemctl enable mysqld
+# Initialize and start PostgreSQL
+sudo postgresql-setup --initdb
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
 
 # Create database
-mysql -u root -p
+sudo -u postgres psql
 CREATE DATABASE scrabble_db;
-exit
+\q
 ```
 
-#### Option B: Use Remote MySQL Database
+#### Option B: Use Remote PostgreSQL Database
 Update `.env` file with your remote database credentials:
 ```
 DB_HOST=your-remote-host
-DB_PORT=3306
+DB_PORT=5432
 DB_NAME=scrabble_db
 DB_USER=your-username
 DB_PASSWORD=your-password
@@ -97,12 +93,12 @@ DB_PASSWORD=your-password
 
 #### Option C: Use Docker (Cross-Platform)
 ```bash
-# Run MySQL in Docker container
-docker run --name scrabble-mysql \
-  -e MYSQL_ROOT_PASSWORD=scrabblebackend2025db \
-  -e MYSQL_DATABASE=scrabble_db \
-  -p 3306:3306 \
-  -d mysql:8.0
+# Run PostgreSQL in Docker container
+docker run --name scrabble-postgres \
+  -e POSTGRES_PASSWORD=scrabblebackend2025db \
+  -e POSTGRES_DB=scrabble_db \
+  -p 5432:5432 \
+  -d postgres:15
 
 # Verify container is running
 docker ps
@@ -188,34 +184,32 @@ Visit `http://localhost:3000` to access the web dashboard with:
 
 **Windows:**
 ```bash
-# Check if MySQL service is running
-sc query mysql80
-# Start MySQL service if stopped
-net start mysql80
+# Check if PostgreSQL service is running
+sc query postgresql-x64-15
+# Start PostgreSQL service if stopped
+net start postgresql-x64-15
 # Check credentials in .env file
-# Verify database exists: mysql -u root -p -e "SHOW DATABASES;"
+# Verify database exists: psql -U postgres -l
 ```
 
 **macOS:**
 ```bash
-# Check if MySQL is running
-brew services list | grep mysql
-# Start MySQL if stopped
-brew services start mysql
+# Check if PostgreSQL is running
+brew services list | grep postgresql
+# Start PostgreSQL if stopped
+brew services start postgresql@15
 # Check credentials in .env file
-# Verify database exists: mysql -u root -p -e "SHOW DATABASES;"
+# Verify database exists: psql -U postgres -l
 ```
 
 **Linux:**
 ```bash
-# Check if MySQL service is running
-sudo systemctl status mysql  # Ubuntu/Debian
-sudo systemctl status mysqld # CentOS/RHEL/Fedora
-# Start MySQL if stopped
-sudo systemctl start mysql   # Ubuntu/Debian
-sudo systemctl start mysqld  # CentOS/RHEL/Fedora
+# Check if PostgreSQL service is running
+sudo systemctl status postgresql
+# Start PostgreSQL if stopped
+sudo systemctl start postgresql
 # Check credentials in .env file
-# Verify database exists: mysql -u root -p -e "SHOW DATABASES;"
+# Verify database exists: sudo -u postgres psql -l
 ```
 
 ### Server Won't Start
