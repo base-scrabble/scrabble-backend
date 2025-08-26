@@ -14,6 +14,9 @@ A Node.js/Express backend API for a multiplayer Scrabble game with PostgreSQL da
 - **Cross-platform Setup** (Windows, macOS, Linux)
 - **Docker Support** for easy deployment
 - **Database Migrations & Seeding**
+- **Blockchain Integration** with smart contract support
+- **Tournament Management** with bracket generation
+- **Admin Panel** for comprehensive system management
 
 ## Quick Start
 
@@ -61,6 +64,11 @@ A Node.js/Express backend API for a multiplayer Scrabble game with PostgreSQL da
 - **Prettier** - Code formatting
 - **Vitest** - Testing framework
 
+### Blockchain Integration
+- **Ethers.js** - Ethereum blockchain interaction
+- **Smart Contracts** - Tournament winner verification
+- **Web3 Integration** - Decentralized game results
+
 ## API Endpoints
 
 ### Health & Status
@@ -92,6 +100,27 @@ A Node.js/Express backend API for a multiplayer Scrabble game with PostgreSQL da
 ### Statistics
 - `GET /api/stats` - Game statistics dashboard
 
+### Admin Panel
+- `POST /api/admin/login` - Admin authentication
+- `GET /api/admin/dashboard` - Admin dashboard stats
+- `GET /api/admin/tournaments` - List tournaments
+- `POST /api/admin/tournaments` - Create tournament
+- `PUT /api/admin/tournaments/:id` - Update tournament
+- `DELETE /api/admin/tournaments/:id` - Delete tournament
+- `POST /api/admin/tournaments/:id/generate-bracket` - Generate tournament bracket
+- `GET /api/admin/schedules` - List tournament schedules
+- `POST /api/admin/schedules` - Create schedule
+- `PUT /api/admin/schedules/:id` - Update schedule
+- `DELETE /api/admin/schedules/:id` - Delete schedule
+- `GET /api/admin/users` - List users with admin view
+
+### Blockchain Integration
+- `POST /api/blockchain/report-tournament-winner` - Report tournament winner to blockchain
+- `POST /api/blockchain/report-game-winner` - Report game winner to blockchain
+- `GET /api/blockchain/tournament-winner/:tournamentId` - Get tournament winner from blockchain
+- `GET /api/blockchain/status` - Check blockchain service status
+- `GET /api/blockchain/gas-estimate` - Estimate gas costs
+
 ## Environment Variables
 
 Create a `.env` file with:
@@ -107,11 +136,26 @@ DB_NAME=scrabble_db
 DB_USER=root
 DB_PASSWORD=your-password
 
-# JWT Secret (for future authentication)
+# JWT Secret
 JWT_SECRET=your-secret-key-here
 
 # CORS Origins
 CORS_ORIGIN=http://localhost:3000,http://localhost:3001
+
+# Blockchain Configuration
+SMART_CONTRACT_ADDRESS=0x...
+WALLET_PRIVATE_KEY=0x...
+RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID
+CHAIN_ID=1
+
+# Payment Gateway (Busha)
+BUSHA_API_KEY=your-busha-api-key
+BUSHA_SECRET_KEY=your-busha-secret-key
+BUSHA_WEBHOOK_SECRET=your-busha-webhook-secret
+
+# Admin Configuration
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=secure-admin-password
 ```
 
 ## Scripts
@@ -127,6 +171,11 @@ CORS_ORIGIN=http://localhost:3000,http://localhost:3001
 - **Game** - Game sessions and state
 - **GamePlayer** - Player participation in games
 - **Move** - Individual game moves and scoring
+- **Tournament** - Tournament management and configuration
+- **TournamentPlayer** - Player participation in tournaments
+- **TournamentMatch** - Tournament bracket matches
+- **TournamentSchedule** - Automated tournament scheduling
+- **Admin** - Admin user management and permissions
 
 ## Cross-Platform Setup
 
@@ -153,16 +202,94 @@ This project is designed to work across different operating systems. Team member
 - Docker containerization option
 - Standardized npm scripts
 
+## Admin Panel Access
+
+### Initial Admin Setup
+1. **Create Admin User**
+   ```bash
+   npm run seed:admin
+   ```
+   This creates an admin user with credentials from your `.env` file.
+
+2. **Access Admin Panel**
+   - Navigate to `http://localhost:3000/admin.html`
+   - Login with admin credentials
+   - Default: admin@example.com / secure-admin-password
+
+### Admin Features
+- **Tournament Management**: Create, edit, delete tournaments
+- **Bracket Generation**: Automatic tournament bracket creation
+- **Schedule Management**: Automated tournament scheduling
+- **User Management**: View and manage player accounts
+- **Blockchain Integration**: Report winners to smart contracts
+- **System Settings**: Configure game rules and parameters
+
 ## Troubleshooting
 
-Common issues and solutions are documented in [SETUP.md](SETUP.md) for each platform.
+### Common Issues
+- **Database Connection**: Ensure PostgreSQL is running and credentials are correct
+- **Blockchain Connection**: Verify RPC URL and network connectivity
+- **Smart Contract**: Confirm contract address and ABI compatibility
+- **Admin Access**: Run `npm run seed:admin` if admin login fails
+
+Detailed platform-specific solutions are documented in [SETUP.md](SETUP.md).
 
 -------------------------------------
+## Blockchain Setup & Smart Contract Deployment
+
+### Prerequisites
+- Node.js Version 18+ is recommended
+- Ethereum wallet with private key
+- RPC endpoint (Infura, Alchemy, or local node)
+- Smart contract deployed on target blockchain
+
+### Smart Contract Deployment
+
+1. **Deploy Smart Contract**
+   - Use Hardhat, Truffle, or Remix to deploy the tournament verification contract
+   - Note the deployed contract address
+   - Ensure the contract has methods for:
+     - `reportTournamentWinner(uint256 tournamentId, address winner)`
+     - `reportGameWinner(uint256 gameId, address winner)`
+     - `getTournamentWinner(uint256 tournamentId) returns (address)`
+
+2. **Configure Environment Variables**
+   ```bash
+   # Copy example environment file
+   cp .env.example .env
+   
+   # Edit .env with your blockchain configuration
+   SMART_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
+   WALLET_PRIVATE_KEY=0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+   RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID
+   CHAIN_ID=1  # 1 for Ethereum mainnet, 137 for Polygon, etc.
+   ```
+
+3. **Test Blockchain Connection**
+   ```bash
+   # Check blockchain service status
+   curl http://localhost:3000/api/blockchain/status
+   
+   # Estimate gas costs
+   curl http://localhost:3000/api/blockchain/gas-estimate
+   ```
+
+### Supported Networks
+- **Ethereum Mainnet** (Chain ID: 1)
+- **Polygon** (Chain ID: 137)
+- **Binance Smart Chain** (Chain ID: 56)
+- **Arbitrum** (Chain ID: 42161)
+- **Optimism** (Chain ID: 10)
+- **Local Development** (Chain ID: 1337)
+
+### Security Considerations
+- Never commit private keys to version control
+- Use environment variables for all sensitive data
+- Consider using a hardware wallet for production
+- Implement proper gas limit and price controls
+- Monitor contract interactions for anomalies
+
 Notes
-
-Node.js: Version 18+ is recommended.
-
-Base chain: Configuration is required for production deployment.
 
 Lockfile (package-lock.json):
 Always commit updated package-lock.json after running npm install:

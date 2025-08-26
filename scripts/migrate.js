@@ -17,7 +17,7 @@ const migrate = async () => {
     // Sync all models with force: true to recreate tables
     await sequelize.sync({ force: true });
     console.log('✅ Database migration completed successfully!');
-    console.log('📋 Tables created: users, games, game_players, moves');
+    console.log('📋 Tables created: users, games, game_players, moves, tournaments, tournament_players, tournament_matches, tournament_schedules, admins');
     
     process.exit(0);
   } catch (error) {

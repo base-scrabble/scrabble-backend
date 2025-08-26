@@ -3,6 +3,8 @@
 ## Prerequisites
 - Node.js 18+ installed
 - PostgreSQL 12+ (for database functionality)
+- Ethereum wallet with private key (for blockchain integration)
+- RPC endpoint access (Infura, Alchemy, or local node)
 
 ## Quick Setup
 
@@ -11,7 +13,40 @@
 npm install
 ```
 
-### 2. Database Setup Options
+### 2. Environment Configuration
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Edit .env with your configuration
+nano .env  # or use your preferred editor
+```
+
+**Required Environment Variables:**
+```env
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=scrabble_db
+DB_USER=postgres
+DB_PASSWORD=your-password
+
+# JWT Secret
+JWT_SECRET=your-super-secret-jwt-key-here
+
+# Blockchain Configuration (Required for tournament winner verification)
+SMART_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
+WALLET_PRIVATE_KEY=0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID
+CHAIN_ID=1
+
+# Admin Configuration
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=secure-admin-password
+```
+
+### 3. Database Setup Options
 
 #### Option A: Install PostgreSQL Locally (Recommended)
 
@@ -104,16 +139,99 @@ docker run --name scrabble-postgres \
 docker ps
 ```
 
-### 3. Run Database Migration & Seeding
+### 4. Database Migration & Seeding
+
 ```bash
-npm run migrate  # Creates tables
-npm run seed     # Adds sample data
+# Run database migrations
+npm run migrate
+
+# Seed database with sample data
+npm run seed
+
+# Create admin user
+npm run seed:admin
+
+# Or run all setup steps at once
+npm run setup
 ```
 
-### 4. Start the Server
+### 5. Verify Blockchain Integration
+
 ```bash
+# Start the server
 npm start
+
+# Test blockchain connection
+curl http://localhost:3000/api/blockchain/status
+
+# Should return:
+# {
+#   "success": true,
+#   "configured": true,
+#   "network": "mainnet",
+#   "chainId": 1
+# }
 ```
+
+### 6. Access Admin Panel
+
+1. Navigate to `http://localhost:3000/admin.html`
+2. Login with admin credentials from your `.env` file
+3. Test tournament creation and blockchain integration
+
+## Blockchain Network Configuration
+
+### Supported Networks
+
+**Ethereum Mainnet:**
+```env
+RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID
+CHAIN_ID=1
+```
+
+**Polygon:**
+```env
+RPC_URL=https://polygon-mainnet.infura.io/v3/YOUR-PROJECT-ID
+CHAIN_ID=137
+```
+
+**Binance Smart Chain:**
+```env
+RPC_URL=https://bsc-dataseed.binance.org/
+CHAIN_ID=56
+```
+
+**Local Development (Hardhat):**
+```env
+RPC_URL=http://localhost:8545
+CHAIN_ID=1337
+```
+
+### Security Best Practices
+
+1. **Never commit private keys to version control**
+2. **Use environment variables for all sensitive data**
+3. **Test on testnets before mainnet deployment**
+4. **Monitor gas prices and set appropriate limits**
+5. **Implement proper error handling for blockchain calls**
+6. **Use hardware wallets for production deployments**
+
+## Troubleshooting Blockchain Issues
+
+**Connection Failed:**
+- Verify RPC URL is correct and accessible
+- Check network connectivity
+- Ensure wallet has sufficient balance for gas
+
+**Transaction Failed:**
+- Check gas limit and gas price settings
+- Verify contract address is correct
+- Ensure wallet has sufficient ETH for gas fees
+
+**Contract Interaction Failed:**
+- Verify contract ABI matches deployed contract
+- Check if contract methods exist
+- Ensure proper permissions on contract methods
 
 ## Available Scripts
 

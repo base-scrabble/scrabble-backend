@@ -7,12 +7,14 @@ require('dotenv').config();
 
 const { sequelize } = require('./config/database');
 const models = require('./models');
-const { User, Game, GamePlayer, Move } = require('./models');
+const { User, Game, GamePlayer, Move, Tournament, TournamentPlayer, TournamentMatch, Admin } = require('./models');
 
 // Import routes
 const exampleRoutes = require('./routes/exampleRoutes');
 const wordRoutes = require('./routes/wordRoutes');
 const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const tournamentRoutes = require('./routes/tournamentRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -208,6 +210,9 @@ app.get('/api/stats', async (req, res) => {
 // Routes
 app.use('/api/words', wordRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/tournaments', tournamentRoutes);
+app.use('/api/blockchain', require('./routes/blockchainRoutes'));
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -288,6 +293,10 @@ const startServer = async () => {
       // Import models to ensure associations are set up
       require('./models');
       console.log('📊 Database models loaded successfully');
+      
+      // Initialize tournament scheduler
+      const tournamentScheduler = require('./services/tournamentScheduler');
+      await tournamentScheduler.initialize();
     } else {
       console.log('⚠️  Database not connected - running in limited mode');
       console.log('💡 To enable full functionality, see SETUP.md for your platform:');
