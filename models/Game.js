@@ -50,6 +50,97 @@ const Game = sequelize.define('Game', {
   completedAt: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  // Blockchain integration fields
+  blockchainGameId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Game ID on the blockchain'
+  },
+  stakeAmount: {
+    type: DataTypes.DECIMAL(18, 8),
+    allowNull: true,
+    comment: 'Stake amount in ETH'
+  },
+  tokenAddress: {
+    type: DataTypes.STRING(42),
+    allowNull: true,
+    comment: 'Token contract address'
+  },
+  player1Address: {
+    type: DataTypes.STRING(42),
+    allowNull: true,
+    comment: 'Player 1 wallet address'
+  },
+  player2Address: {
+    type: DataTypes.STRING(42),
+    allowNull: true,
+    comment: 'Player 2 wallet address'
+  },
+  player1Score: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0
+  },
+  player2Score: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0
+  },
+  winner: {
+    type: DataTypes.ENUM('player1', 'player2', 'draw'),
+    allowNull: true,
+    comment: 'Game winner designation'
+  },
+  finalWinner: {
+    type: DataTypes.STRING(42),
+    allowNull: true,
+    comment: 'Winner wallet address from blockchain'
+  },
+  payout: {
+    type: DataTypes.DECIMAL(18, 8),
+    allowNull: true,
+    comment: 'Payout amount in ETH'
+  },
+  transactionHash: {
+    type: DataTypes.STRING(66),
+    allowNull: true,
+    comment: 'Transaction hash for game creation'
+  },
+  blockchainSubmitted: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Whether game result has been submitted to blockchain'
+  },
+  submissionTxHash: {
+    type: DataTypes.STRING(66),
+    allowNull: true,
+    comment: 'Transaction hash for result submission'
+  },
+  submissionBlockNumber: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Block number where result was submitted'
+  },
+  submissionAttempts: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Number of submission attempts'
+  },
+  submissionFailed: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Whether submission permanently failed'
+  },
+  lastSubmissionError: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Last submission error message'
+  },
+  createdBy: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'User ID who created the game'
   }
 }, {
   tableName: 'games',

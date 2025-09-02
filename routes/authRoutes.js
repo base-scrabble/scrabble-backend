@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { User } = require('../models');
 const { hashPassword, comparePassword, generateToken, authenticate } = require('../middleware/auth');
+const signatureService = require('../services/signatureService');
+const nonceService = require('../services/nonceService');
 
 /**
  * @route POST /api/auth/register
@@ -283,6 +285,129 @@ router.post('/change-password', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to change password'
+    });
+  }
+});
+
+/**
+ * @route POST /api/auth/deposit-signature
+ * @desc Generate backend signature for ETH deposit
+ * @access Private
+ */
+router.post('/deposit-signature', authenticate, async (req, res) => {
+  try {
+    const { userAddress, amount } = req.body;
+    
+    if (!userAddress || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'User address and amount are required'
+      });
+    }
+
+    // Check if signature service is enabled
+    if (!signatureService.isEnabled) {
+      return res.status(503).json({
+        success: false,
+        message: 'Blockchain signature service not available - check environment configuration'
+      });
+    }
+
+    // Validate user is KYC approved (implement your KYC logic)
+    const user = await User.findByPk(req.user.id);
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'User account not approved for deposits'
+      });
+    }
+
+    // Get current nonce for the user
+    const nonce = await nonceService.getCurrentNonce(userAddress);
+    
+    // Generate EIP-712 signature
+    const signature = await signatureService.generateAuthSignature(userAddress, nonce);
+    
+    res.json({
+      success: true,
+      data: {
+        signature,
+        nonce,
+        backendSigner: signatureService.getBackendSignerAddress()
+      }
+    });
+  } catch (error) {
+    console.error('Deposit signature error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate deposit signature',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route POST /api/auth/withdraw-signature
+ * @desc Generate backend signature for ETH withdrawal
+ * @access Private
+ */
+router.post('/withdraw-signature', authenticate, async (req, res) => {
+  try {
+    const { userAddress, amount } = req.body;
+    
+    if (!userAddress || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'User address and amount are required'
+      });
+    }
+
+    // Check if signature service is enabled
+    if (!signatureService.isEnabled) {
+      return res.status(503).json({
+        success: false,
+        message: 'Blockchain signature service not available - check environment configuration'
+      });
+    }
+
+    // Validate user is KYC approved
+    const user = await User.findByPk(req.user.id);
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'User account not approved for withdrawals'
+      });
+    }
+
+    // TODO: Check user's on-chain balance before signing
+    // const balance = await walletContract.getBalance(userAddress, tokenAddress);
+    // if (balance < amount) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Insufficient balance'
+    //   });
+    // }
+
+    // Get current nonce for the user
+    const nonce = await nonceService.getCurrentNonce(userAddress);
+    
+    // Generate EIP-712 signature
+    const signature = await signatureService.generateAuthSignature(userAddress, nonce);
+    
+    res.json({
+      success: true,
+      data: {
+        signature,
+        nonce,
+        backendSigner: signatureService.getBackendSignerAddress()
+      }
+    });
+  } catch (error) {
+    console.error('Withdraw signature error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate withdrawal signature',
+      error: error.message
     });
   }
 });

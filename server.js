@@ -13,6 +13,7 @@ const { User, Game, GamePlayer, Move, Tournament, TournamentPlayer, TournamentMa
 const exampleRoutes = require('./routes/exampleRoutes');
 const wordRoutes = require('./routes/wordRoutes');
 const authRoutes = require('./routes/authRoutes');
+const gameRoutes = require('./routes/gameRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const tournamentRoutes = require('./routes/tournamentRoutes');
 
@@ -210,6 +211,7 @@ app.get('/api/stats', async (req, res) => {
 // Routes
 app.use('/api/words', wordRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/game', gameRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/tournaments', tournamentRoutes);
 app.use('/api/blockchain', require('./routes/blockchainRoutes'));
@@ -297,6 +299,18 @@ const startServer = async () => {
       // Initialize tournament scheduler
       const tournamentScheduler = require('./services/tournamentScheduler');
       await tournamentScheduler.initialize();
+      
+      // Initialize blockchain services
+      const blockchainListener = require('./services/blockchainListener');
+      const submitterService = require('./services/submitterService');
+      
+      // Start blockchain event listener
+      blockchainListener.startListening();
+      
+      // Start submitter service
+      submitterService.start();
+      
+      console.log('🔗 Blockchain services initialized');
     } else {
       console.log('⚠️  Database not connected - running in limited mode');
       console.log('💡 To enable full functionality, see SETUP.md for your platform:');

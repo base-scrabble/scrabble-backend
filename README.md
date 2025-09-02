@@ -14,7 +14,7 @@ A Node.js/Express backend API for a multiplayer Scrabble game with PostgreSQL da
 - **Cross-platform Setup** (Windows, macOS, Linux)
 - **Docker Support** for easy deployment
 - **Database Migrations & Seeding**
-- **Blockchain Integration** with smart contract support
+- **Blockchain Integration** with EIP-712 signatures and backend-signer pattern
 - **Tournament Management** with bracket generation
 - **Admin Panel** for comprehensive system management
 
@@ -66,8 +66,11 @@ A Node.js/Express backend API for a multiplayer Scrabble game with PostgreSQL da
 
 ### Blockchain Integration
 - **Ethers.js** - Ethereum blockchain interaction
-- **Smart Contracts** - Tournament winner verification
-- **Web3 Integration** - Decentralized game results
+- **EIP-712 Signatures** - Structured off-chain signing
+- **Backend-Signer Pattern** - Secure transaction validation
+- **Smart Contracts** - Game settlement and winner verification
+- **Event Listeners** - Real-time blockchain state synchronization
+- **Automated Submission** - Background game result reporting
 
 ## API Endpoints
 
@@ -121,6 +124,13 @@ A Node.js/Express backend API for a multiplayer Scrabble game with PostgreSQL da
 - `GET /api/blockchain/status` - Check blockchain service status
 - `GET /api/blockchain/gas-estimate` - Estimate gas costs
 
+### Backend-Signer Pattern (EIP-712 Signatures)
+- `POST /api/auth/deposit-signature` - Generate backend signature for ETH deposits
+- `POST /api/auth/withdraw-signature` - Generate backend signature for ETH withdrawals
+- `POST /api/game/create-signature` - Generate backend signature for game creation
+- `POST /api/game/join-signature` - Generate backend signature for joining games
+- `POST /api/game/cancel-signature` - Generate backend signature for game cancellation
+
 ## Environment Variables
 
 Create a `.env` file with:
@@ -144,9 +154,16 @@ CORS_ORIGIN=http://localhost:3000,http://localhost:3001
 
 # Blockchain Configuration
 SMART_CONTRACT_ADDRESS=0x...
+SCRABBLE_CONTRACT_ADDRESS=0x...
 WALLET_PRIVATE_KEY=0x...
-RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID
-CHAIN_ID=1
+BACKEND_SIGNER_PRIVATE_KEY=0x...
+SUBMITTER_PRIVATE_KEY=0x...
+RPC_URL=https://mainnet.base.org
+CHAIN_ID=8453
+
+# Stake Amount Limits
+MIN_STAKE_AMOUNT=0.001
+MAX_STAKE_AMOUNT=10
 
 # Payment Gateway (Busha)
 BUSHA_API_KEY=your-busha-api-key
@@ -164,6 +181,7 @@ ADMIN_PASSWORD=secure-admin-password
 - `npm run migrate` - Run database migrations
 - `npm run seed` - Seed database with sample data
 - `npm run setup` - Run migration and seeding together
+- `node scripts/addBlockchainFields.js` - Add blockchain fields to existing database
 
 ## Database Models
 
@@ -235,59 +253,115 @@ This project is designed to work across different operating systems. Team member
 Detailed platform-specific solutions are documented in [SETUP.md](SETUP.md).
 
 -------------------------------------
-## Blockchain Setup & Smart Contract Deployment
+## Blockchain Integration & Backend-Signer Pattern
 
-### Prerequisites
-- Node.js Version 18+ is recommended
-- Ethereum wallet with private key
-- RPC endpoint (Infura, Alchemy, or local node)
-- Smart contract deployed on target blockchain
+### Overview
+The backend implements a secure **backend-signer pattern** using **EIP-712 signatures** for blockchain transactions. This approach provides:
+- **Enhanced Security**: Backend validation before signing
+- **User Control**: Users maintain wallet custody
+- **Gas Optimization**: Reduced transaction costs
+- **Fraud Prevention**: Nonce management and replay protection
 
-### Smart Contract Deployment
+### Architecture Components
 
-1. **Deploy Smart Contract**
-   - Use Hardhat, Truffle, or Remix to deploy the tournament verification contract
-   - Note the deployed contract address
-   - Ensure the contract has methods for:
-     - `reportTournamentWinner(uint256 tournamentId, address winner)`
-     - `reportGameWinner(uint256 gameId, address winner)`
-     - `getTournamentWinner(uint256 tournamentId) returns (address)`
+#### 1. Signature Services
+- **`signatureService.js`** - EIP-712 signature generation
+- **`nonceService.js`** - Nonce management and synchronization
+- **Backend Signer** - Validates and co-signs transactions
+- **Submitter Service** - Automated game result submission
 
-2. **Configure Environment Variables**
-   ```bash
-   # Copy example environment file
-   cp .env.example .env
-   
-   # Edit .env with your blockchain configuration
-   SMART_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
-   WALLET_PRIVATE_KEY=0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
-   RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID
-   CHAIN_ID=1  # 1 for Ethereum mainnet, 137 for Polygon, etc.
-   ```
+#### 2. Event Listeners
+- **`blockchainListener.js`** - Real-time blockchain event monitoring
+- **Wallet Contract Events**: Deposits, withdrawals, game lifecycle
+- **Scrabble Contract Events**: Game settlements and scoring
+- **Database Synchronization**: Automatic state updates
 
-3. **Test Blockchain Connection**
-   ```bash
-   # Check blockchain service status
-   curl http://localhost:3000/api/blockchain/status
-   
-   # Estimate gas costs
-   curl http://localhost:3000/api/blockchain/gas-estimate
-   ```
+#### 3. API Endpoints
+- **Deposit/Withdraw Signatures**: `/api/auth/deposit-signature`, `/api/auth/withdraw-signature`
+- **Game Signatures**: `/api/game/create-signature`, `/api/game/join-signature`, `/api/game/cancel-signature`
+- **Validation**: KYC status, stake limits, game state verification
+
+### Setup Instructions
+
+#### 1. Database Migration
+```bash
+# Add blockchain fields to existing database
+node scripts/addBlockchainFields.js
+```
+
+#### 2. Environment Configuration
+```bash
+# Copy and configure environment file
+cp .env.example .env
+```
+
+Required variables:
+```env
+# Smart Contract Addresses
+SMART_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
+SCRABBLE_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
+
+# Private Keys (Keep Secure!)
+BACKEND_SIGNER_PRIVATE_KEY=0xabcdef...
+SUBMITTER_PRIVATE_KEY=0xabcdef...
+
+# Network Configuration
+RPC_URL=https://mainnet.base.org
+CHAIN_ID=8453
+
+# Game Configuration
+MIN_STAKE_AMOUNT=0.001
+MAX_STAKE_AMOUNT=10
+```
+
+#### 3. Smart Contract Requirements
+Ensure your contracts implement:
+
+**Wallet Contract:**
+- `deposit(address token, uint256 amount, bytes signature)`
+- `withdraw(address token, uint256 amount, bytes signature)`
+- `createGame(uint256 stake, bytes signature)`
+- `joinGame(uint256 gameId, bytes signature)`
+
+**Scrabble Contract:**
+- `submitResult(uint256 gameId, address winner, uint256 player1Score, uint256 player2Score)`
+
+#### 4. Testing Blockchain Integration
+```bash
+# Start the server
+npm start
+
+# Check blockchain service status
+curl http://localhost:3000/api/blockchain/status
+
+# Test signature generation (requires authentication)
+curl -X POST http://localhost:3000/api/auth/deposit-signature \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{"userAddress":"0x...","amount":"0.1"}'
+```
 
 ### Supported Networks
+- **Base Mainnet** (Chain ID: 8453) - Recommended
 - **Ethereum Mainnet** (Chain ID: 1)
 - **Polygon** (Chain ID: 137)
-- **Binance Smart Chain** (Chain ID: 56)
 - **Arbitrum** (Chain ID: 42161)
 - **Optimism** (Chain ID: 10)
 - **Local Development** (Chain ID: 1337)
 
-### Security Considerations
-- Never commit private keys to version control
-- Use environment variables for all sensitive data
-- Consider using a hardware wallet for production
-- Implement proper gas limit and price controls
-- Monitor contract interactions for anomalies
+### Security Features
+- **EIP-712 Structured Signing** - Prevents signature malleability
+- **Nonce Management** - Prevents replay attacks
+- **Backend Validation** - KYC, balance, and state checks
+- **Separate Key Management** - Different keys for signing and submission
+- **Automatic Monitoring** - Real-time event synchronization
+
+### Production Considerations
+- Use hardware wallets or secure key management systems
+- Implement proper monitoring and alerting
+- Set up backup RPC endpoints for redundancy
+- Monitor gas prices and implement dynamic fee adjustment
+- Regular security audits of smart contracts and backend code
 
 Notes
 
