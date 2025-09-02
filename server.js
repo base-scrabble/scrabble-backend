@@ -57,6 +57,25 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Database live test route
+app.get('/api/test', async (req, res) => {
+  try {
+    const [results] = await sequelize.query("SELECT NOW()");
+    res.json({
+      success: true,
+      time: results[0].now,
+      message: "Database connection OK"
+    });
+  } catch (error) {
+    console.error("DB test error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Database query failed",
+      message: error.message
+    });
+  }
+});
+
 // Users routes
 app.get('/api/users', async (req, res) => {
   try {
