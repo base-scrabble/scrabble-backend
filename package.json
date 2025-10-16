@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Backend API for Scrabble game",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
@@ -10,6 +11,7 @@
     "seed": "node scripts/seed.js",
     "seed:admin": "node scripts/seedAdmin.js",
     "setup": "npm run migrate && npm run seed && npm run seed:admin",
+    "postinstall": "prisma generate",
     "test": "vitest"
   },
   "dependencies": {
