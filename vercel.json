@@ -2,7 +2,7 @@
   "version": 2,
   "functions": {
     "server.js": {
-      "runtime": "@vercel/node@20"
+      //remove the runtime property entirely
     }
   },
   "routes": [
