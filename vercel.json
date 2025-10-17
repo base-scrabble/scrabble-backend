@@ -2,14 +2,15 @@
   "version": 2,
   "buildCommand": "npm install && npx prisma generate",
   "functions": {
-    "server.js": {
-      "runtime": "@vercel/node@2.15.10"
+    "api/index.js": {
+      "runtime": "@vercel/node@2.15.10",
+      "maxDuration": 60
     }
   },
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/server.js"
+      "dest": "/api/index.js"
     }
   ]
 }
