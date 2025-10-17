@@ -11,6 +11,7 @@
     "seed": "node scripts/seed.js",
     "seed:admin": "node scripts/seedAdmin.js",
     "setup": "npm run migrate && npm run seed && npm run seed:admin",
+    "build": "npx prisma generate",
     "postinstall": "prisma generate",
     "test": "vitest"
   },
