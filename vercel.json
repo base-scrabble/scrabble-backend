@@ -2,7 +2,7 @@
   "version": 2,
   "functions": {
     "server.js": {
-      //remove the runtime property entirely
+      "runtime": "nodejs20.x"
     }
   },
   "routes": [
