@@ -1,18 +1,13 @@
 {
-  "version": 3,
-  "framework": null,
+  "version": 2,
   "buildCommand": "npm install && npx prisma generate",
+  "installCommand": "npm install",
   "outputDirectory": ".",
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs20.x"
-    },
-    "server.js": {
-      "runtime": "nodejs20.x"
-    }
-  },
+  "framework": null,
+  "builds": [
+    { "src": "server.js", "use": "@vercel/node" }
+  ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/server.js" },
     { "src": "/(.*)", "dest": "/server.js" }
   ]
 }
