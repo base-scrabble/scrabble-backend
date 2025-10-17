@@ -55,3 +55,4 @@ mysql-*.deb
 *.temp
 
 /generated/prisma
+.vercel
