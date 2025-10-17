@@ -1,18 +1,9 @@
 {
-  "version": 3,
-  "framework": null,
-  "buildCommand": "npm install && npx prisma generate",
-  "outputDirectory": ".",
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs20.x"
-    },
-    "server.js": {
-      "runtime": "nodejs20.x"
-    }
-  },
+  "version": 2,
   "routes": [
-    { "src": "/api/(.*)", "dest": "/server.js" },
-    { "src": "/(.*)", "dest": "/server.js" }
+    {
+      "src": "/(.*)",
+      "dest": "/server.js"
+    }
   ]
 }
