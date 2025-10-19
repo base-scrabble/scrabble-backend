@@ -3,11 +3,11 @@
   "buildCommand": "npm install && npx prisma generate",
   "functions": {
     "api/index.js": {
-      "runtime": "nodejs20.x",
+      "runtime": "@vercel/node@2.15.10",
       "maxDuration": 60
     },
     "server.js": {
-      "runtime": "nodejs20.x",
+      "runtime": "@vercel/node@2.15.10",
       "maxDuration": 60
     }
   },
