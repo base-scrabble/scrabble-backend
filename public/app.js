@@ -1,19 +1,15 @@
-// API Base URL
-const API_BASE = '';
+const API_BASE = 'https://scrabble-backend-sigma.vercel.app/api';
 
-// Global state
 let users = [];
 let games = [];
 let stats = {};
 
-// Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     checkServerHealth();
     loadStats();
     loadUsers();
     loadGames();
     
-    // Refresh data every 30 seconds
     setInterval(() => {
         loadStats();
         loadUsers();
@@ -21,24 +17,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }, 30000);
 });
 
-// Check server and database health
 async function checkServerHealth() {
     try {
-        const response = await fetch(`${API_BASE}/api/health`);
+        const response = await fetch(`${API_BASE}/health`);
         const data = await response.json();
         
         document.getElementById('server-status').textContent = `Server: ${data.status}`;
         document.getElementById('db-status').textContent = `Database: ${data.database}`;
         
-        if (data.status === 'healthy') {
-            document.getElementById('server-status').style.background = 'rgba(46, 204, 113, 0.3)';
-        }
-        
-        if (data.database === 'connected') {
-            document.getElementById('db-status').style.background = 'rgba(46, 204, 113, 0.3)';
-        } else {
-            document.getElementById('db-status').style.background = 'rgba(231, 76, 60, 0.3)';
-        }
+        document.getElementById('server-status').style.background = data.status === 'healthy' ? 'rgba(46, 204, 113, 0.3)' : 'rgba(231, 76, 60, 0.3)';
+        document.getElementById('db-status').style.background = data.database === 'connected' ? 'rgba(46, 204, 113, 0.3)' : 'rgba(231, 76, 60, 0.3)';
     } catch (error) {
         console.error('Health check failed:', error);
         document.getElementById('server-status').textContent = 'Server: Error';
@@ -48,10 +36,9 @@ async function checkServerHealth() {
     }
 }
 
-// Load statistics
 async function loadStats() {
     try {
-        const response = await fetch(`${API_BASE}/api/stats`);
+        const response = await fetch(`${API_BASE}/stats`);
         const data = await response.json();
         
         if (data.success) {
@@ -64,7 +51,6 @@ async function loadStats() {
     }
 }
 
-// Render statistics
 function renderStats() {
     const statsGrid = document.getElementById('stats-grid');
     statsGrid.innerHTML = `
@@ -87,10 +73,17 @@ function renderStats() {
     `;
 }
 
-// Load users
 async function loadUsers() {
     try {
-        const response = await fetch(`${API_BASE}/api/users`);
+        const token = localStorage.getItem('privyToken');
+        if (!token) {
+            document.getElementById('users-table').innerHTML = '<tr><td colspan="8" class="error">Please log in</td></tr>';
+            return;
+        }
+        
+        const response = await fetch(`${API_BASE}/users`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await response.json();
         
         if (data.success) {
@@ -103,7 +96,6 @@ async function loadUsers() {
     }
 }
 
-// Render users table
 function renderUsers() {
     const tbody = document.getElementById('users-table');
     
@@ -131,10 +123,17 @@ function renderUsers() {
     }).join('');
 }
 
-// Load games
 async function loadGames() {
     try {
-        const response = await fetch(`${API_BASE}/api/games`);
+        const token = localStorage.getItem('privyToken');
+        if (!token) {
+            document.getElementById('games-table').innerHTML = '<tr><td colspan="6" class="error">Please log in</td></tr>';
+            return;
+        }
+        
+        const response = await fetch(`${API_BASE}/games`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await response.json();
         
         if (data.success) {
@@ -147,7 +146,6 @@ async function loadGames() {
     }
 }
 
-// Render games table
 function renderGames() {
     const tbody = document.getElementById('games-table');
     
@@ -191,63 +189,66 @@ function renderGames() {
     }).join('');
 }
 
-// Show create user form
 function showCreateUserForm() {
     document.getElementById('create-user-form').style.display = 'block';
 }
 
-// Hide create user form
 function hideCreateUserForm() {
     document.getElementById('create-user-form').style.display = 'none';
-    // Clear form
     document.getElementById('username').value = '';
     document.getElementById('email').value = '';
     document.getElementById('password').value = '';
 }
 
-// Create new user
 async function createUser() {
-    const username = document.getElementById('username').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value.trim();
-    
-    if (!username || !email || !password) {
-        showMessage('Please fill in all fields', 'error');
-        return;
-    }
-    
+    const username = document.getElementById('username').value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
     try {
-        const response = await fetch(`${API_BASE}/api/users`, {
+        const token = localStorage.getItem('privyToken');
+        if (!token) {
+            showMessage('Please log in to create a user', 'error');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/users`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ username, email, password })
         });
-        
+
         const data = await response.json();
         
         if (data.success) {
-            showMessage('Player created successfully!', 'success');
+            showMessage('User created successfully!', 'success');
             hideCreateUserForm();
             loadUsers();
-            loadStats();
         } else {
-            showMessage(data.message || 'Failed to create player', 'error');
+            showMessage(data.message || 'Failed to create user', 'error');
         }
     } catch (error) {
         console.error('Failed to create user:', error);
-        showMessage('Failed to create player', 'error');
+        showMessage('Failed to create user', 'error');
     }
 }
 
-// Create new game
 async function createGame() {
     try {
-        const response = await fetch(`${API_BASE}/api/games`, {
+        const token = localStorage.getItem('privyToken');
+        if (!token) {
+            showMessage('Please log in to create a game', 'error');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/games`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ maxPlayers: 4 })
         });
@@ -267,10 +268,17 @@ async function createGame() {
     }
 }
 
-// View game details
 async function viewGame(gameId) {
     try {
-        const response = await fetch(`${API_BASE}/api/games/${gameId}`);
+        const token = localStorage.getItem('privyToken');
+        if (!token) {
+            showMessage('Please log in to view game details', 'error');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/games/${gameId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await response.json();
         
         if (data.success) {
@@ -285,7 +293,6 @@ async function viewGame(gameId) {
     }
 }
 
-// Show message
 function showMessage(message, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = type;
@@ -300,7 +307,5 @@ function showMessage(message, type) {
     
     document.body.appendChild(messageDiv);
     
-    setTimeout(() => {
-        document.body.removeChild(messageDiv);
-    }, 3000);
+    setTimeout(() => { document.body.removeChild(messageDiv); }, 3000);
 }

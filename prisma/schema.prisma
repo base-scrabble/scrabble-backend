@@ -8,24 +8,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model SequelizeMeta {
-  name String @id @db.VarChar(255)
-}
-
 model admins {
-  id                             Int              @id @default(autoincrement())
-  user_id                        Int              @unique(map: "admins_user_id")
-  role                           enum_admins_role @default(moderator)
-  permissions                    Json             @default("{\"tournaments\":{\"create\":false,\"read\":true,\"update\":false,\"delete\":false,\"manage_players\":false},\"users\":{\"create\":false,\"read\":true,\"update\":false,\"delete\":false,\"ban\":false},\"games\":{\"create\":false,\"read\":true,\"update\":false,\"delete\":false,\"moderate\":false},\"system\":{\"settings\":false,\"logs\":false,\"backup\":false,\"analytics\":true}}") @db.Json
-  last_login_at                  DateTime?        @db.Timestamptz(6)
-  is_active                      Boolean          @default(true)
-  created_by                     Int?
-  created_at                     DateTime         @db.Timestamptz(6)
-  updated_at                     DateTime         @db.Timestamptz(6)
-  users_admins_created_byTousers users?           @relation("admins_created_byTousers", fields: [created_by], references: [id])
-  users_admins_user_idTousers    users            @relation("admins_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade)
+  id             Int              @id @default(autoincrement())
+  userId         Int              @unique @map("user_id")
+  role           enum_admins_role @default(moderator)
+  permissions    Json             @default("{}") @db.Json
+  lastLoginAt    DateTime?        @map("last_login_at") @db.Timestamptz(6)
+  isActive       Boolean          @default(true) @map("is_active")
+  createdBy      Int?             @map("created_by")
+  createdAt      DateTime         @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @map("updated_at") @db.Timestamptz(6)
+  usersCreatedBy users?           @relation("admins_created_byTousers", fields: [createdBy], references: [id])
+  usersAdmin     users            @relation("admins_user_idTousers", fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([is_active], map: "admins_is_active")
+  @@index([isActive], map: "admins_is_active")
   @@index([role], map: "admins_role")
 }
 
@@ -45,204 +41,164 @@ model game_players {
   users        users     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model games {
-  id                    Int                  @id @default(autoincrement())
-  gameCode              String               @unique @db.VarChar(10)
-  status                enum_games_status?   @default(waiting)
-  currentTurn           Int?                 @default(1)
-  maxPlayers            Int?                 @default(4)
-  boardState            String?              @default("[[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]]")
-  availableLetters      String?              @default("[\"A\",\"A\",\"A\",\"A\",\"A\",\"A\",\"A\",\"A\",\"A\",\"B\",\"B\",\"C\",\"C\",\"D\",\"D\",\"D\",\"D\",\"E\",\"E\",\"E\",\"E\",\"E\",\"E\",\"E\",\"E\",\"E\",\"E\",\"E\",\"E\",\"F\",\"F\",\"G\",\"G\",\"G\",\"H\",\"H\",\"I\",\"I\",\"I\",\"I\",\"I\",\"I\",\"I\",\"I\",\"I\",\"J\",\"K\",\"L\",\"L\",\"L\",\"L\",\"M\",\"M\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"O\",\"O\",\"O\",\"O\",\"O\",\"O\",\"O\",\"O\",\"P\",\"P\",\"Q\",\"R\",\"R\",\"R\",\"R\",\"R\",\"R\",\"S\",\"S\",\"S\",\"S\",\"T\",\"T\",\"T\",\"T\",\"T\",\"T\",\"U\",\"U\",\"U\",\"U\",\"V\",\"V\",\"W\",\"W\",\"X\",\"Y\",\"Y\",\"Z\"]")
-  winnerId              Int?
-  startedAt             DateTime?            @db.Timestamptz(6)
-  completedAt           DateTime?            @db.Timestamptz(6)
-  blockchainGameId      String?              @db.VarChar(255)
-  stakeAmount           Decimal?             @db.Decimal(18, 8)
-  tokenAddress          String?              @db.VarChar(42)
-  player1Address        String?              @db.VarChar(42)
-  player2Address        String?              @db.VarChar(42)
-  player1Score          Int?                 @default(0)
-  player2Score          Int?                 @default(0)
+  id                    Int                @id @default(autoincrement())
+  gameCode              String             @unique @db.VarChar(255)
+  status                enum_games_status  @default(waiting)
   winner                enum_games_winner?
-  finalWinner           String?              @db.VarChar(42)
-  payout                Decimal?             @db.Decimal(18, 8)
-  transactionHash       String?              @db.VarChar(66)
-  blockchainSubmitted   Boolean?             @default(false)
-  submissionTxHash      String?              @db.VarChar(66)
-  submissionBlockNumber Int?
-  submissionAttempts    Int?                 @default(0)
-  submissionFailed      Boolean?             @default(false)
+  boardState            String?            @default("[]")
+  currentTurn           Int?               @default(1)
+  maxPlayers            Int?               @default(4)
+  createdBy             Int
+  createdAt             DateTime           @db.Timestamptz(6)
+  updatedAt             DateTime           @db.Timestamptz(6)
+  blockchainGameId      BigInt?
+  blockchainSubmitted   Boolean            @default(false)
+  submissionTxHash      String?
+  submissionBlockNumber BigInt?
+  submissionAttempts    Int                @default(0)
   lastSubmissionError   String?
-  createdBy             Int?
-  createdAt             DateTime             @db.Timestamptz(6)
-  updatedAt             DateTime             @db.Timestamptz(6)
+  submissionFailed      Boolean            @default(false)
+  player1Address        String?            @db.VarChar(42)
+  player2Address        String?            @db.VarChar(42)
+  player1Score          Int?
+  player2Score          Int?
   game_players          game_players[]
-  users                 users?               @relation(fields: [winnerId], references: [id])
+  users                 users              @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   moves                 moves[]
-  tournament_matches    tournament_matches[]
 }
 
 model moves {
   id         Int      @id @default(autoincrement())
   gameId     Int
   userId     Int
-  word       String?  @db.VarChar(15)
-  positions  String?
-  points     Int
-  moveNumber Int
+  word       String   @db.VarChar(255)
+  position   Json     @db.Json
+  score      Int
+  turnNumber Int
   createdAt  DateTime @db.Timestamptz(6)
   updatedAt  DateTime @db.Timestamptz(6)
-  skipped    Boolean  @default(false)
   games      games    @relation(fields: [gameId], references: [id], onDelete: Cascade)
   users      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model tournament_matches {
-  id                                         Int                            @id @default(autoincrement())
-  tournament_id                              Int
-  game_id                                    Int?
-  round_number                               Int
-  match_number                               Int
-  player1_id                                 Int
-  player2_id                                 Int?
-  winner_id                                  Int?
-  loser_id                                   Int?
-  player1_score                              Int?
-  player2_score                              Int?
-  status                                     enum_tournament_matches_status @default(scheduled)
-  scheduled_at                               DateTime?                      @db.Timestamptz(6)
-  started_at                                 DateTime?                      @db.Timestamptz(6)
-  completed_at                               DateTime?                      @db.Timestamptz(6)
-  bracket_position                           String?                        @db.VarChar(50)
-  next_match_id                              Int?
-  notes                                      String?
-  created_at                                 DateTime                       @db.Timestamptz(6)
-  updated_at                                 DateTime                       @db.Timestamptz(6)
-  games                                      games?                         @relation(fields: [game_id], references: [id])
-  users_tournament_matches_loser_idTousers   users?                         @relation("tournament_matches_loser_idTousers", fields: [loser_id], references: [id])
-  users_tournament_matches_player1_idTousers users                          @relation("tournament_matches_player1_idTousers", fields: [player1_id], references: [id], onDelete: NoAction)
-  users_tournament_matches_player2_idTousers users?                         @relation("tournament_matches_player2_idTousers", fields: [player2_id], references: [id])
-  tournaments                                tournaments                    @relation(fields: [tournament_id], references: [id], onDelete: Cascade)
-  users_tournament_matches_winner_idTousers  users?                         @relation("tournament_matches_winner_idTousers", fields: [winner_id], references: [id])
-
-  @@index([game_id], map: "tournament_matches_game_id")
-  @@index([player1_id], map: "tournament_matches_player1_id")
-  @@index([player2_id], map: "tournament_matches_player2_id")
-  @@index([tournament_id, round_number], map: "tournament_matches_tournament_id_round_number")
-  @@index([tournament_id, status], map: "tournament_matches_tournament_id_status")
-  @@index([winner_id], map: "tournament_matches_winner_id")
+  id           Int                            @id @default(autoincrement())
+  tournamentId Int
+  roundNumber  Int
+  matchNumber  Int
+  status       enum_tournament_matches_status @default(scheduled)
+  scorePlayer1 Int?                           @default(0)
+  scorePlayer2 Int?                           @default(0)
+  startAt      DateTime?                      @db.Timestamptz(6)
+  endAt        DateTime?                      @db.Timestamptz(6)
+  createdAt    DateTime                       @db.Timestamptz(6)
+  updatedAt    DateTime                       @db.Timestamptz(6)
+  loserId      Int?
+  player1Id    Int
+  player2Id    Int?
+  winnerId     Int?
+  loser        users?                         @relation("tournament_matches_loser_idTousers", fields: [loserId], references: [id])
+  player1      users                          @relation("tournament_matches_player1_idTousers", fields: [player1Id], references: [id], onDelete: Cascade)
+  player2      users?                         @relation("tournament_matches_player2_idTousers", fields: [player2Id], references: [id])
+  tournaments  tournaments                    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  winner       users?                         @relation("tournament_matches_winner_idTousers", fields: [winnerId], references: [id])
 }
 
 model tournament_players {
-  id                Int                            @id @default(autoincrement())
-  tournament_id     Int
-  user_id           Int
-  seed_number       Int?
-  registration_date DateTime                       @db.Timestamptz(6)
-  status            enum_tournament_players_status @default(registered)
-  current_round     Int                            @default(1)
-  wins              Int                            @default(0)
-  losses            Int                            @default(0)
-  draws             Int                            @default(0)
-  total_score       Int                            @default(0)
-  average_score     Decimal                        @default(0) @db.Decimal(8, 2)
-  ranking           Int?
-  notes             String?
-  is_active         Boolean                        @default(true)
-  created_at        DateTime                       @db.Timestamptz(6)
-  updated_at        DateTime                       @db.Timestamptz(6)
-  tournaments       tournaments                    @relation(fields: [tournament_id], references: [id], onDelete: Cascade)
-  users             users                          @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@unique([tournament_id, user_id], map: "tournament_players_tournament_id_user_id")
-  @@index([seed_number], map: "tournament_players_seed_number")
-  @@index([tournament_id, ranking], map: "tournament_players_tournament_id_ranking")
-  @@index([tournament_id, status], map: "tournament_players_tournament_id_status")
+  id           Int                            @id @default(autoincrement())
+  tournamentId Int
+  userId       Int
+  status       enum_tournament_players_status @default(registered)
+  seed         Int?                           @default(0)
+  ranking      Int?                           @default(0)
+  wins         Int?                           @default(0)
+  losses       Int?                           @default(0)
+  totalScore   Int?                           @default(0)
+  createdAt    DateTime                       @db.Timestamptz(6)
+  updatedAt    DateTime                       @db.Timestamptz(6)
+  tournaments  tournaments                    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  users        users                          @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model tournament_schedules {
-  id                    Int                                  @id @default(autoincrement())
-  tournament_id         Int?
-  name                  String                               @db.VarChar(100)
-  type                  enum_tournament_schedules_type       @default(one_time)
-  frequency             enum_tournament_schedules_frequency?
-  cron_expression       String?                              @db.VarChar(100)
-  next_run_at           DateTime?                            @db.Timestamptz(6)
-  last_run_at           DateTime?                            @db.Timestamptz(6)
-  auto_start            Boolean                              @default(false)
-  min_players           Int                                  @default(2)
-  registration_duration Int                                  @default(3600)
-  is_active             Boolean                              @default(true)
-  settings              Json?                                @default("{\"notifications\":{\"registrationOpen\":true,\"tournamentStart\":true,\"roundStart\":true},\"automation\":{\"createBrackets\":true,\"startMatches\":false,\"advanceRounds\":false}}") @db.Json
-  created_by            Int?
-  created_at            DateTime                             @db.Timestamptz(6)
-  updated_at            DateTime                             @db.Timestamptz(6)
-  tournaments           tournaments?                         @relation(fields: [tournament_id], references: [id])
+  id                   Int                                  @id @default(autoincrement())
+  tournamentId         Int?
+  name                 String                               @db.VarChar(100)
+  type                 enum_tournament_schedules_type       @default(recurring)
+  frequency            enum_tournament_schedules_frequency?
+  cronExpression       String?                              @db.VarChar(255)
+  startAt              DateTime?                            @db.Timestamptz(6)
+  endAt                DateTime?                            @db.Timestamptz(6)
+  nextRunAt            DateTime?                            @db.Timestamptz(6)
+  lastRunAt            DateTime?                            @db.Timestamptz(6)
+  autoStart            Boolean                              @default(false)
+  minPlayers           Int                                  @default(2)
+  registrationDuration Int                                  @default(3600)
+  isActive             Boolean                              @default(true)
+  settings             Json?                                @default("{}")
+  createdAt            DateTime                             @map("created_at") @db.Timestamptz(6)
+  createdBy            Int?                                 @map("created_by")
+  updatedAt            DateTime                             @map("updated_at") @db.Timestamptz(6)
+  tournaments          tournaments?                         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
-  @@index([is_active], map: "tournament_schedules_is_active")
-  @@index([next_run_at], map: "tournament_schedules_next_run_at")
-  @@index([tournament_id], map: "tournament_schedules_tournament_id")
-  @@index([type], map: "tournament_schedules_type")
+  @@index([tournamentId])
+  @@index([type])
+  @@index([nextRunAt])
+  @@index([isActive])
 }
 
 model tournaments {
-  id                                  Int                              @id @default(autoincrement())
-  name                                String                           @db.VarChar(100)
-  description                         String?
-  type                                enum_tournaments_type            @default(single_elimination)
-  status                              enum_tournaments_status          @default(draft)
-  scheduling_type                     enum_tournaments_scheduling_type @default(manual)
-  max_players                         Int                              @default(16)
-  entry_fee                           Decimal                          @default(0) @db.Decimal(10, 2)
-  prize_pool                          Decimal                          @default(0) @db.Decimal(10, 2)
-  registration_start_at               DateTime?                        @db.Timestamptz(6)
-  registration_end_at                 DateTime?                        @db.Timestamptz(6)
-  start_at                            DateTime?                        @db.Timestamptz(6)
-  end_at                              DateTime?                        @db.Timestamptz(6)
-  rules                               Json?                            @default("{\"timeLimit\":300,\"gameMode\":\"classic\",\"allowChallenges\":true,\"minWordLength\":2}") @db.Json
-  settings                            Json?                            @default("{\"autoAdvance\":false,\"sendNotifications\":true,\"allowSpectators\":true,\"recordGames\":true}") @db.Json
-  winner_id                           Int?
-  created_by                          Int
-  is_active                           Boolean                          @default(true)
-  created_at                          DateTime                         @db.Timestamptz(6)
-  updated_at                          DateTime                         @db.Timestamptz(6)
-  tournament_matches                  tournament_matches[]
-  tournament_players                  tournament_players[]
-  tournament_schedules                tournament_schedules[]
-  users_tournaments_created_byTousers users                            @relation("tournaments_created_byTousers", fields: [created_by], references: [id], onDelete: Cascade)
-  users_tournaments_winner_idTousers  users?                           @relation("tournaments_winner_idTousers", fields: [winner_id], references: [id])
-
-  @@index([created_by], map: "tournaments_created_by")
-  @@index([scheduling_type], map: "tournaments_scheduling_type")
-  @@index([start_at], map: "tournaments_start_at")
-  @@index([status], map: "tournaments_status")
-  @@index([type], map: "tournaments_type")
+  id                   Int                     @id @default(autoincrement())
+  name                 String                  @db.VarChar(255)
+  description          String?
+  type                 enum_tournaments_type   @default(single_elimination)
+  status               enum_tournaments_status @default(draft)
+  maxPlayers           Int
+  entryFee             Decimal?                @db.Decimal(10, 2)
+  prizePool            Decimal?                @db.Decimal(10, 2)
+  registrationStartAt  DateTime?               @db.Timestamptz(6)
+  registrationEndAt    DateTime?               @db.Timestamptz(6)
+  startAt              DateTime?               @db.Timestamptz(6)
+  endAt                DateTime?               @db.Timestamptz(6)
+  createdBy            Int                     @map("created_by")
+  createdAt            DateTime                @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                @map("updated_at") @db.Timestamptz(6)
+  isActive             Boolean                 @default(true)
+  rules                Json?                   @db.Json
+  winnerId             Int?
+  tournament_matches   tournament_matches[]
+  tournament_players   tournament_players[]
+  tournament_schedules tournament_schedules[]
+  createdByUser        users                   @relation("tournaments_created_byTousers", fields: [createdBy], references: [id], onDelete: Cascade)
+  winnerUser           users?                  @relation("tournaments_winner_idTousers", fields: [winnerId], references: [id])
 }
 
 model users {
-  id                                                      Int                  @id @default(autoincrement())
-  username                                                String               @unique @db.VarChar(50)
-  email                                                   String               @unique @db.VarChar(100)
-  password                                                String               @db.VarChar(255)
-  totalScore                                              Int?                 @default(0)
-  gamesPlayed                                             Int?                 @default(0)
-  gamesWon                                                Int?                 @default(0)
-  isActive                                                Boolean?             @default(true)
-  createdAt                                               DateTime             @db.Timestamptz(6)
-  updatedAt                                               DateTime             @db.Timestamptz(6)
-  admins_admins_created_byTousers                         admins[]             @relation("admins_created_byTousers")
-  admins_admins_user_idTousers                            admins?              @relation("admins_user_idTousers")
-  game_players                                            game_players[]
-  games                                                   games[]
-  moves                                                   moves[]
-  tournament_matches_tournament_matches_loser_idTousers   tournament_matches[] @relation("tournament_matches_loser_idTousers")
-  tournament_matches_tournament_matches_player1_idTousers tournament_matches[] @relation("tournament_matches_player1_idTousers")
-  tournament_matches_tournament_matches_player2_idTousers tournament_matches[] @relation("tournament_matches_player2_idTousers")
-  tournament_matches_tournament_matches_winner_idTousers  tournament_matches[] @relation("tournament_matches_winner_idTousers")
-  tournament_players                                      tournament_players[]
-  tournaments_tournaments_created_byTousers               tournaments[]        @relation("tournaments_created_byTousers")
-  tournaments_tournaments_winner_idTousers                tournaments[]        @relation("tournaments_winner_idTousers")
+  id                         Int                  @id @default(autoincrement())
+  username                   String               @unique @db.VarChar(255)
+  email                      String               @unique @db.VarChar(255)
+  address                    String?              @unique @db.VarChar(255)
+  avatar                     String?              @db.VarChar(255)
+  password                   String?               @db.VarChar(255)
+  totalScore                 Int?                 @default(0)
+  gamesPlayed                Int?                 @default(0)
+  gamesWon                   Int?                 @default(0)
+  isActive                   Boolean              @default(true)
+  createdAt                  DateTime             @db.Timestamptz(6)
+  updatedAt                  DateTime             @db.Timestamptz(6)
+  adminsCreated              admins[]             @relation("admins_created_byTousers")
+  admin                      admins?              @relation("admins_user_idTousers")
+  game_players               game_players[]
+  games                      games[]
+  moves                      moves[]
+  tournamentMatchesAsLoser   tournament_matches[] @relation("tournament_matches_loser_idTousers")
+  tournamentMatchesAsPlayer1 tournament_matches[] @relation("tournament_matches_player1_idTousers")
+  tournamentMatchesAsPlayer2 tournament_matches[] @relation("tournament_matches_player2_idTousers")
+  tournamentMatchesAsWinner  tournament_matches[] @relation("tournament_matches_winner_idTousers")
+  tournament_players         tournament_players[]
+  tournamentsCreated         tournaments[]        @relation("tournaments_created_byTousers")
+  tournamentsWon             tournaments[]        @relation("tournaments_winner_idTousers")
 }
 
 enum enum_admins_role {
@@ -293,11 +249,6 @@ enum enum_tournament_schedules_frequency {
 enum enum_tournament_schedules_type {
   recurring
   one_time
-}
-
-enum enum_tournaments_scheduling_type {
-  manual
-  automatic
 }
 
 enum enum_tournaments_status {

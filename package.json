@@ -4,46 +4,52 @@
   "description": "Backend API for Scrabble game",
   "main": "server.js",
   "type": "module",
-  "engines":{
-    "node": "18.x"
+  "engines": {
+    "node": "20.x"
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "migrate": "node scripts/migrate.js",
-    "seed": "node scripts/seed.js",
-    "seed:admin": "node scripts/seedAdmin.js",
+    "dev": "node server.cjs",
+    "migrate": "npx prisma migrate dev",
+    "seed": "node scripts/seed.cjs",
+    "seed:admin": "node scripts/seedAdmin.cjs",
     "setup": "npm run migrate && npm run seed && npm run seed:admin",
     "build": "npx prisma generate",
     "postinstall": "prisma generate",
     "test": "vitest"
   },
   "dependencies": {
-    "@prisma/client": "^6.17.1",
+    "@prisma/client": "^6.18.0",
+    "axios": "^1.13.1",
     "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "cron-parser": "^4.9.0",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "dotenv": "^16.6.1",
+    "ethers": "^6.15.0",
+    "express": "^4.21.2",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "morgan": "^1.10.1",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
-    "pg": "^8.16.3",
+    "pg": "^8.12.0",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.37.3",
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.8.1",
+    "vercel": "^44.7.3"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
-    "eslint": "^9.33.0",
+    "eslint": "^9.13.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.5",
     "hardhat": "^2.26.2",
     "prettier": "^3.6.2",
-    "prisma": "^6.17.1",
-    "vercel": "^44.7.3",
+    "prisma": "^6.18.0",
     "vitest": "^3.2.4"
   }
 }
