@@ -2,18 +2,21 @@
   "version": 2,
   "buildCommand": "npm install && npx prisma generate",
   "functions": {
-    "api/index.js": {
+    "api/index.cjs": {
       "runtime": "@vercel/node@2.15.10",
+      "memory": 1024,
       "maxDuration": 60
     },
-    "server.js": {
+    "server.cjs": {
       "runtime": "@vercel/node@2.15.10",
+      "memory": 1024,
       "maxDuration": 60
     }
   },
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/index.js" },
-    { "src": "/(.*)", "dest": "/server.js" }
+    { "src": "/socket.io/(.*)", "dest": "/server.cjs" },
+    { "src": "/api/(.*)", "dest": "/api/index.cjs" },
+    { "src": "/(.*)", "dest": "/server.cjs" }
   ],
   "env": {
     "NODE_ENV": "production"
