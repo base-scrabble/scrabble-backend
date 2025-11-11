@@ -1,9 +1,10 @@
+// services/nonceService.cjs
 const { ethers } = require('ethers');
 
 class NonceService {
   constructor() {
     // Check if blockchain environment variables are configured
-    if (!process.env.RPC_URL) {
+    if (!process.env.RPC_URL && !process.env.RPC_WSS_URL) {
       console.log('⚠️ Nonce service environment variables not configured - service disabled');
       this.isEnabled = false;
       this.cache = new Map();
@@ -11,13 +12,21 @@ class NonceService {
     }
 
     try {
-      this.provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+      // 🧠 Dual RPC setup — prefers WebSocket provider
+      if (process.env.RPC_WSS_URL) {
+        this.provider = new ethers.WebSocketProvider(process.env.RPC_WSS_URL);
+        console.log('🔌 NonceService using WebSocket provider (RPC_WSS_URL)');
+      } else {
+        this.provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+        console.log('🔌 NonceService using HTTP provider (RPC_URL)');
+      }
+
       this.cache = new Map(); // In-memory cache for nonces
       this.cacheExpiry = 5 * 60 * 1000; // 5 minutes
       this.isEnabled = true;
     } catch (error) {
       console.error('❌ Failed to initialize nonce service:', error.message);
-      console.log('💡 Please check your RPC_URL in .env file');
+      console.log('💡 Please check your RPC_URL or RPC_WSS_URL in .env file');
       this.isEnabled = false;
       this.cache = new Map();
     }
@@ -45,21 +54,21 @@ class NonceService {
     try {
       const nonce = await this.walletContract.getNonce(userAddress);
       const nonceNumber = parseInt(nonce.toString());
-      
+
       // Update cache
       this.cache.set(userAddress.toLowerCase(), nonceNumber);
-      
+
       return nonceNumber;
     } catch (error) {
       console.error('Error fetching nonce from blockchain:', error);
-      
+
       // Fallback to cached value if available
       const cachedNonce = this.cache.get(userAddress.toLowerCase());
       if (cachedNonce !== undefined) {
         console.warn(`Using cached nonce ${cachedNonce} for ${userAddress}`);
         return cachedNonce;
       }
-      
+
       throw new Error('Failed to fetch user nonce');
     }
   }
@@ -105,7 +114,7 @@ class NonceService {
     if (!this.isEnabled) {
       return true; // Accept any nonce when service is disabled
     }
-    
+
     try {
       const currentNonce = await this.getCurrentNonce(userAddress);
       return nonce === currentNonce;

@@ -1,15 +1,8 @@
 // services/blockchainService.cjs
-const { ethers } = require('ethers');
+// Updated for QuickNode dual RPC support (WSS preferred, fallback to HTTP)
+// 🧠 New lines are marked with: // [added] or // [updated]
 
-/**
- * BlockchainService (V1-style, strict wallet)
- * - Uses env names exactly as used in your repo:
- * SCRABBLE_GAME_ADDRESS
- * BACKEND_SIGNER_PRIVATE_KEY
- * - Requires wallet for write operations (report* methods)
- * - Returns txHash, blockNumber, gasUsed on successful writes
- * - Does not print private keys
- */
+const { ethers } = require('ethers');
 
 class BlockchainService {
   constructor() {
@@ -17,31 +10,35 @@ class BlockchainService {
     this.wallet = null;
     this.contract = null;
 
-        // ENV VARS used in your codebase
+    // --- ENV VARS ---
     this.contractAddress = process.env.SCRABBLE_GAME_ADDRESS;
     this.privateKey = process.env.BACKEND_SIGNER_PRIVATE_KEY;
-    this.rpcUrl = process.env.RPC_URL || 'https://sepolia.base.org';
+    this.rpcUrl = process.env.RPC_URL; // [updated]
+    this.rpcWssUrl = process.env.RPC_WSS_URL; // [added]
 
-    if (!this.contractAddress) {
-      console.error('Missing SCRABBLE_GAME_ADDRESS environment variable');
-    }
-    if (!this.privateKey) {
-      console.error('Missing BACKEND_SIGNER_PRIVATE_KEY environment variable');
-    }
+    if (!this.contractAddress) console.error('Missing SCRABBLE_GAME_ADDRESS environment variable');
+    if (!this.privateKey) console.error('Missing BACKEND_SIGNER_PRIVATE_KEY environment variable');
 
     this.init();
   }
 
   async init() {
     try {
-      // provider
-      this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
+      // --- Provider selection ---
+      if (this.rpcWssUrl) {
+        this.provider = new ethers.WebSocketProvider(this.rpcWssUrl); // [added]
+        console.log('🔌 Using WebSocket provider (RPC_WSS_URL)');
+      } else {
+        this.provider = new ethers.JsonRpcProvider(this.rpcUrl || 'https://sepolia.base.org');
+        console.log('🔌 Using HTTP provider (RPC_URL)');
+      }
 
-      // wallet (required for reporting)
+      // --- Wallet setup ---
       if (this.privateKey) {
         this.wallet = new ethers.Wallet(this.privateKey, this.provider);
       }
-      // ABI: keep functions needed by backend
+
+      // --- Contract ABI ---
       this.contractABI = [
         {
           inputs: [
@@ -84,15 +81,15 @@ class BlockchainService {
         },
       ];
 
-      // strict: require wallet for contract (V1 behavior)
+      // --- Contract initialization ---
       if (this.contractAddress && this.wallet) {
         this.contract = new ethers.Contract(this.contractAddress, this.contractABI, this.wallet);
-        console.log('Blockchain service initialized successfully');
+        console.log('✅ Blockchain service initialized successfully');
       } else {
-        console.warn('Contract not initialized: missing contract address or wallet');
+        console.warn('⚠️ Contract not initialized: missing contract address or wallet');
       }
     } catch (error) {
-      console.error('Blockchain service initialization failed:', error.message);
+      console.error('❌ Blockchain service initialization failed:', error.message);
     }
   }
 
@@ -101,10 +98,13 @@ class BlockchainService {
     try {
       if (!this.contract) throw new Error('Smart contract not initialized');
 
-      const { tournamentId, winnerId, winnerAddress, prizeAmount, timestamp = Math.floor(Date.now() / 1000) } =
-        tournamentData;
+      const {
+        tournamentId, winnerId, winnerAddress, prizeAmount,
+        timestamp = Math.floor(Date.now() / 1000),
+      } = tournamentData;
 
-      if (!tournamentId || !winnerId || !winnerAddress) throw new Error('Missing required tournament winner data');
+      if (!tournamentId || !winnerId || !winnerAddress)
+        throw new Error('Missing required tournament winner data');
 
       const tx = await this.contract.reportTournamentWinner(
         ethers.toBigInt(tournamentId),
@@ -114,7 +114,7 @@ class BlockchainService {
         ethers.toBigInt(timestamp)
       );
 
-      console.log('Tournament winner submitted, tx=', tx.hash);
+      console.log('🏁 Tournament winner submitted, tx =', tx.hash);
       const receipt = await tx.wait();
 
       return {
@@ -134,10 +134,13 @@ class BlockchainService {
     try {
       if (!this.contract) throw new Error('Smart contract not initialized');
 
-      const { tournamentId, gameId, winnerId, winnerAddress, finalScore, timestamp = Math.floor(Date.now() / 1000) } =
-        gameData;
+      const {
+        tournamentId, gameId, winnerId, winnerAddress, finalScore,
+        timestamp = Math.floor(Date.now() / 1000),
+      } = gameData;
 
-      if (!tournamentId || !gameId || !winnerId || !winnerAddress) throw new Error('Missing required game winner data');
+      if (!tournamentId || !gameId || !winnerId || !winnerAddress)
+        throw new Error('Missing required game winner data');
 
       const tx = await this.contract.reportGameWinner(
         ethers.toBigInt(tournamentId),
@@ -148,7 +151,7 @@ class BlockchainService {
         ethers.toBigInt(timestamp)
       );
 
-      console.log('Game winner submitted, tx=', tx.hash);
+      console.log('🎯 Game winner submitted, tx =', tx.hash);
       const receipt = await tx.wait();
 
       return {
@@ -166,9 +169,11 @@ class BlockchainService {
   // === get tournament winner (view) ===
   async getTournamentWinner(tournamentId) {
     try {
-      if (!this.contract && !this.provider) throw new Error('Contract/provider not initialized');
+      if (!this.contract && !this.provider)
+        throw new Error('Contract/provider not initialized');
 
-      const readContract = this.contract || new ethers.Contract(this.contractAddress, this.contractABI, this.provider);
+      const readContract =
+        this.contract || new ethers.Contract(this.contractAddress, this.contractABI, this.provider);
       const result = await readContract.getTournamentWinner(ethers.toBigInt(tournamentId));
 
       return {
@@ -186,15 +191,19 @@ class BlockchainService {
     }
   }
 
-  // === estimate gas (keeps behavior) ===
+  // === estimate gas ===
   async estimateGas(tournamentData) {
     try {
-      if (!this.contract && !this.provider) throw new Error('Contract/provider not initialized');
+      if (!this.contract && !this.provider)
+        throw new Error('Contract/provider not initialized');
 
-      const { tournamentId, winnerId, winnerAddress, prizeAmount, timestamp = Math.floor(Date.now() / 1000) } =
-        tournamentData;
+      const {
+        tournamentId, winnerId, winnerAddress, prizeAmount,
+        timestamp = Math.floor(Date.now() / 1000),
+      } = tournamentData;
 
-      const target = this.contract || new ethers.Contract(this.contractAddress, this.contractABI, this.provider);
+      const target =
+        this.contract || new ethers.Contract(this.contractAddress, this.contractABI, this.provider);
 
       const gasEstimate = await target.reportTournamentWinner.estimateGas(
         ethers.toBigInt(tournamentId),
@@ -210,7 +219,9 @@ class BlockchainService {
         success: true,
         gasEstimate: gasEstimate.toString(),
         gasPrice: gasPrice.gasPrice?.toString?.() ?? null,
-        estimatedCost: ethers.formatEther(gasEstimate * (gasPrice.gasPrice || ethers.toBigInt(0))),
+        estimatedCost: ethers.formatEther(
+          gasEstimate * (gasPrice.gasPrice || ethers.toBigInt(0))
+        ),
       };
     } catch (error) {
       console.error('Failed to estimate gas:', error.message);
@@ -218,19 +229,18 @@ class BlockchainService {
     }
   }
 
-  // strict V1 check: contract AND wallet required for being "configured"
+  // === status ===
   isConfigured() {
     return !!(this.contract && this.wallet);
   }
 
-  // keep port in status (V1)
   getStatus() {
     return {
       configured: this.isConfigured(),
       contractAddress: this.contractAddress || 'Not set',
       hasWallet: !!this.wallet,
       hasContract: !!this.contract,
-      rpcUrl: this.rpcUrl,
+      rpcUrl: this.rpcWssUrl || this.rpcUrl, // [updated]
       port: process.env.PORT || 3000,
     };
   }

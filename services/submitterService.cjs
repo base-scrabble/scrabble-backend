@@ -6,6 +6,7 @@ const cron = require('node-cron');
 /**
  * SubmitterService (V1-style)
  * - Uses SUBMITTER_PRIVATE_KEY and SCRABBLE_GAME_ADDRESS
+ * - Prefers WebSocket provider if RPC_WSS_URL is set
  * - Periodically finds completed games and calls submitResult on-chain
  * - Writes submissionTxHash, submissionBlockNumber, submissionAttempts, lastSubmissionError
  */
@@ -15,19 +16,33 @@ class SubmitterService {
     // Validate blockchain environment variables
     if (
       !process.env.SUBMITTER_PRIVATE_KEY ||
-      process.env.SUBMITTER_PRIVATE_KEY === '0x0000000000000000000000000000000000000000000000000000000000000000' ||
+      process.env.SUBMITTER_PRIVATE_KEY ===
+        '0x0000000000000000000000000000000000000000000000000000000000000000' ||
       !process.env.SCRABBLE_GAME_ADDRESS ||
-      !process.env.RPC_URL
+      (!process.env.RPC_URL && !process.env.RPC_WSS_URL)
     ) {
-      console.log('Submitter service disabled - blockchain environment variables not configured or invalid');
+      console.log(
+        'Submitter service disabled - blockchain environment variables not configured or invalid'
+      );
       this.isEnabled = false;
       this.isRunning = false;
       return;
     }
 
     try {
-      this.provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-      this.submitterWallet = new ethers.Wallet(process.env.SUBMITTER_PRIVATE_KEY, this.provider);
+      // 🧠 Added dual RPC support (WebSocket preferred)
+      if (process.env.RPC_WSS_URL) {
+        this.provider = new ethers.WebSocketProvider(process.env.RPC_WSS_URL);
+        console.log('🔌 Submitter using WebSocket provider (RPC_WSS_URL)');
+      } else {
+        this.provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+        console.log('🔌 Submitter using HTTP provider (RPC_URL)');
+      }
+
+      this.submitterWallet = new ethers.Wallet(
+        process.env.SUBMITTER_PRIVATE_KEY,
+        this.provider
+      );
 
       this.scrabbleContract = new ethers.Contract(
         process.env.SCRABBLE_GAME_ADDRESS,
@@ -43,10 +58,14 @@ class SubmitterService {
       this.checkInterval = process.env.SUBMITTER_CHECK_CRON || '*/30 * * * * *'; // Every 30 seconds by default
       this.maxAttempts = Number(process.env.SUBMITTER_MAX_ATTEMPTS || 3);
 
-      console.log(`Submitter initialized for address: ${this.submitterWallet.address}`);
+      console.log(
+        `Submitter initialized for address: ${this.submitterWallet.address}`
+      );
     } catch (error) {
       console.error('Failed to initialize submitter service:', error.message);
-      console.log('Check SUBMITTER_PRIVATE_KEY, SCRABBLE_GAME_ADDRESS, and RPC_URL in .env');
+      console.log(
+        'Check SUBMITTER_PRIVATE_KEY, SCRABBLE_GAME_ADDRESS, and RPC_URL/RPC_WSS_URL in .env'
+      );
       this.isEnabled = false;
       this.isRunning = false;
     }
@@ -122,7 +141,13 @@ class SubmitterService {
     try {
       console.log(`Submitting result for game ${game.id} (chain ID: ${game.blockchainGameId})`);
 
-      if (!game.winner || (game.player1Score == null) || (game.player2Score == null) || !game.player1Address || !game.player2Address) {
+      if (
+        !game.winner ||
+        game.player1Score == null ||
+        game.player2Score == null ||
+        !game.player1Address ||
+        !game.player2Address
+      ) {
         console.error(`Game ${game.id} missing result data`);
         return;
       }
@@ -132,7 +157,9 @@ class SubmitterService {
         return;
       }
 
-      const blockchainGame = await this.scrabbleContract.getGame(ethers.toBigInt(game.blockchainGameId));
+      const blockchainGame = await this.scrabbleContract.getGame(
+        ethers.toBigInt(game.blockchainGameId)
+      );
       if (blockchainGame.isSettled) {
         console.log(`Game ${game.blockchainGameId} already settled on-chain`);
         await prisma.games.update({
@@ -142,7 +169,8 @@ class SubmitterService {
         return;
       }
 
-      const winnerAddress = game.winner === 'player1' ? game.player1Address : game.player2Address;
+      const winnerAddress =
+        game.winner === 'player1' ? game.player1Address : game.player2Address;
 
       let tx = null;
       let attempt = 0;
@@ -228,7 +256,7 @@ class SubmitterService {
       submitterAddress: this.submitterWallet?.address || 'N/A',
       checkInterval: this.checkInterval,
       contractAddress: process.env.SCRABBLE_GAME_ADDRESS || 'N/A',
-      rpcUrl: process.env.RPC_URL || 'N/A',
+      rpcUrl: process.env.RPC_WSS_URL || process.env.RPC_URL || 'N/A',
       port: process.env.PORT || 3000,
     };
   }

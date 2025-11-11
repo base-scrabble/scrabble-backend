@@ -1,16 +1,13 @@
 // services/blockchainListener.cjs
+// Updated: remove unsupported provider.on('close') for ethers v6
+// and use safe websocket close detection. Keeps WebSocket + polling fallback.
+
 const { ethers } = require('ethers');
 const prisma = require('../generated/prisma');
 
-/**
- * Blockchain event listener (V1-style)
- * - Listens to GameFinished & TournamentConcluded
- * - Uses SCRABBLE_GAME_ADDRESS (from env)
- * - Attaches provider error handling in an ethers-v6-compatible way
- */
-
 const CONTRACT_ADDRESS = process.env.SCRABBLE_GAME_ADDRESS;
 const RPC_URL = process.env.RPC_URL || 'https://sepolia.base.org';
+const RPC_WSS_URL = process.env.RPC_WSS_URL; // [added]
 
 let provider = null;
 let contract = null;
@@ -25,9 +22,17 @@ const ABI = [
 
 async function initContract() {
   try {
-    provider = new ethers.JsonRpcProvider(RPC_URL);
+    // Prefer WSS provider if available
+    if (RPC_WSS_URL) {
+      provider = new ethers.WebSocketProvider(RPC_WSS_URL); // [updated]
+      console.log('🔌 Using WebSocket provider (RPC_WSS_URL)');
+    } else {
+      provider = new ethers.JsonRpcProvider(RPC_URL);
+      console.log('🔌 Using HTTP provider (RPC_URL)');
+    }
+
     contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
-    console.log(`Connected to contract at ${CONTRACT_ADDRESS}`);
+    console.log(`✅ Connected to contract at ${CONTRACT_ADDRESS}`);
     return true;
   } catch (err) {
     console.error('Failed to initialize contract:', err.message || err);
@@ -40,7 +45,7 @@ async function handleGameFinished(gameId, winnerId, winnerAddress, finalScore, e
     await prisma.games.update({
       where: { id: Number(gameId) },
       data: {
-        winner: 'player1', // keep your placeholder mapping for now
+        winner: 'player1',
         player1Score: Number(finalScore),
         blockchainSubmitted: true,
         submissionTxHash: event.transactionHash,
@@ -48,7 +53,7 @@ async function handleGameFinished(gameId, winnerId, winnerAddress, finalScore, e
         updatedAt: new Date(),
       },
     });
-    console.log(`Game ${gameId} synced to DB`);
+    console.log(`✅ Game ${gameId} synced to DB`);
   } catch (err) {
     console.error(`DB update failed for game ${gameId}:`, err.message);
   }
@@ -66,7 +71,7 @@ async function handleTournamentConcluded(tournamentId, winnerId, winnerAddress, 
       data: { gamesWon: { increment: 1 }, totalScore: { increment: Number(prizeAmount || 0) }, updatedAt: new Date() },
     });
 
-    console.log(`Tournament ${tournamentId} updated`);
+    console.log(`🏆 Tournament ${tournamentId} updated`);
   } catch (err) {
     console.error(`Failed to update tournament ${tournamentId}:`, err.message);
   }
@@ -74,7 +79,7 @@ async function handleTournamentConcluded(tournamentId, winnerId, winnerAddress, 
 
 async function startListening() {
   try {
-    console.log('Initializing blockchain listener...');
+    console.log('🚀 Initializing blockchain listener...');
 
     if (!CONTRACT_ADDRESS) {
       console.warn('SCRABBLE_GAME_ADDRESS not configured — skipping listener start');
@@ -84,43 +89,40 @@ async function startListening() {
     const ok = await initContract();
     if (!ok) throw new Error('Contract initialization failed');
 
-    // avoid duplicate listeners
     contract.removeAllListeners();
 
-    // HTTP-friendly event polling (no filters)
-    console.log("Starting HTTP polling for events...");
+    if (provider instanceof ethers.WebSocketProvider) {
+      console.log('🔐 Using live WebSocket event subscription');
+      contract.on('GameFinished', handleGameFinished);
+      contract.on('TournamentConcluded', handleTournamentConcluded);
+    } else {
+      console.log('🔁 Starting HTTP polling for events...');
+      setInterval(async () => {
+        try {
+          const latestBlock = await provider.getBlockNumber();
+          const fromBlock = Math.max(0, latestBlock - 100);
+          const gameEvents = await contract.queryFilter('GameFinished', fromBlock, latestBlock);
+          for (const e of gameEvents) await handleGameFinished(...e.args, e);
 
-    setInterval(async () => {
-      try {
-        const latestBlock = await provider.getBlockNumber();
+          const tourEvents = await contract.queryFilter('TournamentConcluded', fromBlock, latestBlock);
+          for (const e of tourEvents) await handleTournamentConcluded(...e.args, e);
+        } catch (err) {
+          console.error('Polling error:', err.message);
+        }
+      }, 15000);
+    }
 
-        const gameEvents = await contract.queryFilter('GameFinished', latestBlock - 100, latestBlock);
-        for (const e of gameEvents) await handleGameFinished(...e.args, e);
-
-        const tourEvents = await contract.queryFilter('TournamentConcluded', latestBlock - 100, latestBlock);
-        for (const e of tourEvents) await handleTournamentConcluded(...e.args, e);
-
-      } catch (err) {
-        console.error('Polling error:', err.message);
-      }
-    }, 15000);
-
-    // provider error handling — ethers v6: 'close' is not a valid Provider event name on provider
-    provider.on('error', (err) => {
-      console.error('Provider error:', err && err.message ? err.message : err);
-      scheduleReconnect();
-    });
-
-    // if underlying websocket exists (some providers expose it), listen for close
-    if (provider._websocket && typeof provider._websocket.on === 'function') {
-      provider._websocket.on('close', (code, reason) => {
-        console.warn('Provider websocket closed:', code, reason);
+    // [REMOVED] provider.on('close', ...) — invalid in ethers v6
+    // ✅ WebSocket close detection (safe)
+    if (provider.websocket && typeof provider.websocket.on === 'function') { // [added]
+      provider.websocket.on('close', (code, reason) => {
+        console.warn('⚠️ WebSocket closed:', code, reason);
         scheduleReconnect();
       });
     }
 
     reconnectAttempts = 0;
-    console.log('Blockchain listener active and watching contract events');
+    console.log('✅ Blockchain listener active and watching events');
   } catch (err) {
     console.error('Listener startup failed:', err.message || err);
     scheduleReconnect();
@@ -146,9 +148,7 @@ process.on('SIGINT', async () => {
   try {
     if (contract) contract.removeAllListeners();
     if (provider && provider.removeAllListeners) provider.removeAllListeners();
-  } catch (err) {
-    // ignore
-  }
+  } catch (err) {}
   process.exit(0);
 });
 
