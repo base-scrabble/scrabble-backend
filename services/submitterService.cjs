@@ -3,6 +3,9 @@ const { ethers } = require('ethers');
 const { prisma } = require('../lib/prisma.cjs');
 const cron = require('node-cron');
 
+const DEFAULT_HTTP_RPC = 'https://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
+const DEFAULT_WSS_RPC = 'wss://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
+
 /**
  * SubmitterService (V1-style)
  * - Uses SUBMITTER_PRIVATE_KEY and SCRABBLE_GAME_ADDRESS
@@ -22,7 +25,7 @@ class SubmitterService {
       (!process.env.RPC_URL && !process.env.RPC_WSS_URL)
     ) {
       console.log(
-        'Submitter service disabled - blockchain environment variables not configured or invalid'
+        '⚠️ Submitter service disabled - blockchain environment variables not configured or invalid'
       );
       this.isEnabled = false;
       this.isRunning = false;
@@ -30,14 +33,11 @@ class SubmitterService {
     }
 
     try {
-      // 🧠 Added dual RPC support (WebSocket preferred)
-      if (process.env.RPC_WSS_URL) {
-        this.provider = new ethers.WebSocketProvider(process.env.RPC_WSS_URL);
-        console.log('🔌 Submitter using WebSocket provider (RPC_WSS_URL)');
-      } else {
-        this.provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-        console.log('🔌 Submitter using HTTP provider (RPC_URL)');
-      }
+      // Use HTTP provider for stability (sending transactions doesn't require WebSocket)
+        this.provider = new ethers.JsonRpcProvider(
+          process.env.RPC_URL || DEFAULT_HTTP_RPC
+        );
+      console.log('🔌 Submitter using HTTP provider (RPC_URL)');
 
       this.submitterWallet = new ethers.Wallet(
         process.env.SUBMITTER_PRIVATE_KEY,
@@ -59,12 +59,12 @@ class SubmitterService {
       this.maxAttempts = Number(process.env.SUBMITTER_MAX_ATTEMPTS || 3);
 
       console.log(
-        `Submitter initialized for address: ${this.submitterWallet.address}`
+        `✅ Submitter initialized for address: ${this.submitterWallet.address}`
       );
     } catch (error) {
-      console.error('Failed to initialize submitter service:', error.message);
+      console.error('❌ Failed to initialize submitter service:', error.message);
       console.log(
-        'Check SUBMITTER_PRIVATE_KEY, SCRABBLE_GAME_ADDRESS, and RPC_URL/RPC_WSS_URL in .env'
+        '⚠️ Submitter will be disabled. Check SUBMITTER_PRIVATE_KEY, SCRABBLE_GAME_ADDRESS, and RPC_URL/RPC_WSS_URL in .env'
       );
       this.isEnabled = false;
       this.isRunning = false;

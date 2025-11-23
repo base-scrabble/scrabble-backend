@@ -1,6 +1,9 @@
 // services/nonceService.cjs
 const { ethers } = require('ethers');
 
+const DEFAULT_HTTP_RPC = 'https://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
+const DEFAULT_WSS_RPC = 'wss://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
+
 class NonceService {
   constructor() {
     // Check if blockchain environment variables are configured
@@ -12,14 +15,11 @@ class NonceService {
     }
 
     try {
-      // 🧠 Dual RPC setup — prefers WebSocket provider
-      if (process.env.RPC_WSS_URL) {
-        this.provider = new ethers.WebSocketProvider(process.env.RPC_WSS_URL);
-        console.log('🔌 NonceService using WebSocket provider (RPC_WSS_URL)');
-      } else {
-        this.provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-        console.log('🔌 NonceService using HTTP provider (RPC_URL)');
-      }
+      // 🧠 Use HTTP provider to reduce WebSocket connection count
+      this.provider = new ethers.JsonRpcProvider(
+        process.env.RPC_URL || DEFAULT_HTTP_RPC
+      );
+      console.log('🔌 NonceService using HTTP provider (RPC_URL)');
 
       this.cache = new Map(); // In-memory cache for nonces
       this.cacheExpiry = 5 * 60 * 1000; // 5 minutes

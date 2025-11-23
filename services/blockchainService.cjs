@@ -4,6 +4,9 @@
 
 const { ethers } = require('ethers');
 
+const DEFAULT_HTTP_RPC = 'https://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
+const DEFAULT_WSS_RPC = 'wss://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
+
 class BlockchainService {
   constructor() {
     this.provider = null;
@@ -13,8 +16,8 @@ class BlockchainService {
     // --- ENV VARS ---
     this.contractAddress = process.env.SCRABBLE_GAME_ADDRESS;
     this.privateKey = process.env.BACKEND_SIGNER_PRIVATE_KEY;
-    this.rpcUrl = process.env.RPC_URL; // [updated]
-    this.rpcWssUrl = process.env.RPC_WSS_URL; // [added]
+    this.rpcUrl = process.env.RPC_URL || DEFAULT_HTTP_RPC;
+    this.rpcWssUrl = process.env.RPC_WSS_URL || DEFAULT_WSS_RPC;
 
     if (!this.contractAddress) console.error('Missing SCRABBLE_GAME_ADDRESS environment variable');
     if (!this.privateKey) console.error('Missing BACKEND_SIGNER_PRIVATE_KEY environment variable');
@@ -24,14 +27,9 @@ class BlockchainService {
 
   async init() {
     try {
-      // --- Provider selection ---
-      if (this.rpcWssUrl) {
-        this.provider = new ethers.WebSocketProvider(this.rpcWssUrl); // [added]
-        console.log('🔌 Using WebSocket provider (RPC_WSS_URL)');
-      } else {
-        this.provider = new ethers.JsonRpcProvider(this.rpcUrl || 'https://sepolia.base.org');
-        console.log('🔌 Using HTTP provider (RPC_URL)');
-      }
+      // --- Prefer HTTP provider for stability, but retain exact QuickNode fallback ---
+      this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
+      console.log(`🔌 Using HTTP provider (${this.rpcUrl})`);
 
       // --- Wallet setup ---
       if (this.privateKey) {
@@ -240,7 +238,7 @@ class BlockchainService {
       contractAddress: this.contractAddress || 'Not set',
       hasWallet: !!this.wallet,
       hasContract: !!this.contract,
-      rpcUrl: this.rpcWssUrl || this.rpcUrl, // [updated]
+      rpcUrl: this.rpcWssUrl || this.rpcUrl,
       port: process.env.PORT || 3000,
     };
   }

@@ -6,8 +6,10 @@ const { ethers } = require('ethers');
 const prisma = require('../generated/prisma');
 
 const CONTRACT_ADDRESS = process.env.SCRABBLE_GAME_ADDRESS;
-const RPC_URL = process.env.RPC_URL || 'https://sepolia.base.org';
-const RPC_WSS_URL = process.env.RPC_WSS_URL; // [added]
+const DEFAULT_HTTP_RPC = 'https://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
+const DEFAULT_WSS_RPC = 'wss://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
+const RPC_URL = process.env.RPC_URL || DEFAULT_HTTP_RPC;
+const RPC_WSS_URL = process.env.RPC_WSS_URL || DEFAULT_WSS_RPC;
 
 let provider = null;
 let contract = null;
@@ -20,16 +22,18 @@ const ABI = [
   'event TournamentConcluded(uint256 indexed tournamentId, uint256 winnerId, address winnerAddress, uint256 prizeAmount)',
 ];
 
+function buildProvider() {
+  if (RPC_WSS_URL && RPC_WSS_URL.startsWith('wss')) {
+    console.log('🔌 BlockchainListener using WebSocket provider (RPC_WSS_URL)');
+    return new ethers.WebSocketProvider(RPC_WSS_URL);
+  }
+  console.log('🔌 BlockchainListener using HTTP provider (RPC_URL)');
+  return new ethers.JsonRpcProvider(RPC_URL);
+}
+
 async function initContract() {
   try {
-    // Prefer WSS provider if available
-    if (RPC_WSS_URL) {
-      provider = new ethers.WebSocketProvider(RPC_WSS_URL); // [updated]
-      console.log('🔌 Using WebSocket provider (RPC_WSS_URL)');
-    } else {
-      provider = new ethers.JsonRpcProvider(RPC_URL);
-      console.log('🔌 Using HTTP provider (RPC_URL)');
-    }
+    provider = buildProvider();
 
     contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
     console.log(`✅ Connected to contract at ${CONTRACT_ADDRESS}`);
@@ -95,6 +99,7 @@ async function startListening() {
       console.log('🔐 Using live WebSocket event subscription');
       contract.on('GameFinished', handleGameFinished);
       contract.on('TournamentConcluded', handleTournamentConcluded);
+      registerShutdownHandler();
     } else {
       console.log('🔁 Starting HTTP polling for events...');
       setInterval(async () => {
@@ -110,12 +115,14 @@ async function startListening() {
           console.error('Polling error:', err.message);
         }
       }, 15000);
+      registerShutdownHandler();
     }
 
     // [REMOVED] provider.on('close', ...) — invalid in ethers v6
     // ✅ WebSocket close detection (safe)
-    if (provider.websocket && typeof provider.websocket.on === 'function') { // [added]
-      provider.websocket.on('close', (code, reason) => {
+    const ws = provider?.websocket || provider?._websocket || provider?._ws;
+    if (ws && typeof ws.on === 'function') {
+      ws.on('close', (code, reason) => {
         console.warn('⚠️ WebSocket closed:', code, reason);
         scheduleReconnect();
       });
@@ -142,14 +149,18 @@ function scheduleReconnect() {
   }, delay);
 }
 
-// graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\nShutting down blockchain listener...');
-  try {
-    if (contract) contract.removeAllListeners();
-    if (provider && provider.removeAllListeners) provider.removeAllListeners();
-  } catch (err) {}
-  process.exit(0);
-});
+// graceful shutdown - only register if listener is actually running
+function registerShutdownHandler() {
+  process.on('SIGINT', async () => {
+    console.log('\nShutting down blockchain listener...');
+    try {
+      if (contract) contract.removeAllListeners();
+      if (provider && provider.removeAllListeners) provider.removeAllListeners();
+      const ws = provider?.websocket || provider?._websocket || provider?._ws;
+      ws?.terminate?.();
+    } catch (err) {}
+    process.exit(0);
+  });
+}
 
 module.exports = { startListening };
