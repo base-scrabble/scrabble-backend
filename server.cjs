@@ -7,6 +7,8 @@ const http = require('http');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const { prisma } = require('./lib/prisma.cjs');
+const { sanitizeBody } = require('./middleware/validation.cjs');
+const { apiLimiter, authLimiter, gameLimiter } = require('./middleware/rateLimiter.cjs');
 
 // === ROUTES ===
 const authRoutes = require('./routes/authRoutes.cjs');
@@ -22,35 +24,53 @@ const blockchainRoutes = require('./routes/blockchainRoutes.cjs');
 const tournamentScheduler = require('./services/tournamentScheduler.cjs');
 const blockchainListener = require('./services/blockchainListener.cjs');
 const submitterService = require('./services/submitterService.cjs');
+const logger = require('./lib/logger.cjs');
+
+const { gameRoom, playerRoom } = require('./lib/rooms.cjs');
 
 const app = express();
 const server = http.createServer(app);
+
+const corsOptions = {
+  origin: [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    /http:\/\/192\.168\.\d+\.\d+:5173/,
+  ],
+  methods: 'GET,POST,PUT,DELETE',
+  credentials: true,
+};
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(',') || [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'https://scrabble-frontend.vercel.app',
-      'https://basescrabble.xyz',
+    origin: [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      /http:\/\/192\.168\.\d+\.\d+:5173/,
     ],
     methods: ['GET', 'POST'],
     credentials: true,
   },
+  // Add explicit transport configuration
+  transports: ['polling', 'websocket'],
+  allowEIO3: true, // Support older Engine.IO clients if needed
 });
 
-app.use(cors({
-  origin: process.env.CORS_ORIGIN?.split(',') || [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'https://scrabble-frontend.vercel.app',
-    'https://basescrabble.xyz',
-  ],
-  credentials: true,
-}));
+// Make io available to controllers at runtime to avoid circular require issues
+app.set('io', io);
+global.__io = io;
+
+app.use(cors(corsOptions));
 app.use(helmet());
 app.use(morgan('combined'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Apply security and sanitization middleware
+app.use(sanitizeBody);
+
+// Apply rate limiting (global, then specific endpoint limits)
+app.use(apiLimiter);
 
 // === HEALTH & STATS ===
 app.get('/', (req, res) => {
@@ -67,7 +87,7 @@ app.get('/api/health', async (req, res) => {
     const result = await prisma.$queryRaw`SELECT NOW()`;
     res.json({ success: true, time: result[0].now, message: 'Database connection OK' });
   } catch (err) {
-    console.error('DB test error:', err.message);
+    logger.error('health-check:error', { message: err.message, stack: err.stack });
     res.status(500).json({ success: false, message: 'Database query failed', error: err.message });
   }
 });
@@ -83,51 +103,76 @@ app.get('/api/stats', async (req, res) => {
 
     res.json({ success: true, data: { totalUsers, totalGames, activeGames, completedGames } });
   } catch (err) {
-    console.error('Stats error:', err.message);
+    logger.error('stats:error', { message: err.message, stack: err.stack });
     res.status(500).json({ success: false, message: 'Failed to fetch stats', error: err.message });
   }
 });
 
 // === ROUTE MOUNTING ===
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/words', wordRoutes);
-app.use('/api/game', gameRoutes);           // ← SIGNATURES
-app.use('/api/gameplay', gameplayRoutes);   // ← GAMEPLAY
-app.use('/api/tournaments', tournamentRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/blockchain', blockchainRoutes);
+app.use('/api/auth', authLimiter, authRoutes);          // Strict rate limit on auth
+app.use('/api/users', apiLimiter, userRoutes);
+app.use('/api/words', apiLimiter, wordRoutes);
+app.use('/api/game', gameLimiter, gameRoutes);           // ← SIGNATURES (moderate limit)
+app.use('/api/gameplay', gameLimiter, gameplayRoutes);   // ← GAMEPLAY (moderate limit)
+app.use('/api/tournaments', apiLimiter, tournamentRoutes);
+app.use('/api/admin', authLimiter, adminRoutes);
+app.use('/api/blockchain', apiLimiter, blockchainRoutes);
 
 // === SOCKET.IO ===
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  logger.info('socket:connected', { socketId: socket.id });
 
   socket.on('join-game', ({ gameId, playerName }) => {
-    socket.join(`game:${gameId}`);
-    console.log(`User ${socket.id} joined game ${gameId}`);
-    io.to(`game:${gameId}`).emit('game:join', { gameId, playerName });
+    const room = gameRoom(gameId);
+    socket.join(room);
+    if (playerName) {
+      socket.join(playerRoom(gameId, playerName));
+    }
+    logger.info('socket:join-game', { socketId: socket.id, gameId, playerName });
+    io.to(room).emit('game:join', { gameId, playerName, socketId: socket.id });
   });
 
   socket.on('game:join', ({ gameId, playerName }) => {
-    socket.join(`game:${gameId}`);
-    io.to(`game:${gameId}`).emit('game:join', { gameId, playerName });
+    const room = gameRoom(gameId);
+    socket.join(room);
+    if (playerName) {
+      socket.join(playerRoom(gameId, playerName));
+    }
+    logger.info('socket:game:join', { socketId: socket.id, gameId, playerName });
+    // Broadcast to ALL clients in room (including sender)
+    io.to(room).emit('game:join', { gameId, playerName, socketId: socket.id });
+    io.to(room).emit('player:joined', { gameId, playerName, socketId: socket.id });
   });
 
   socket.on('game:start', ({ gameId }) => {
-    io.to(`game:${gameId}`).emit('game:start', { gameId });
+    const room = gameRoom(gameId);
+    logger.info('socket:game:start', { socketId: socket.id, gameId });
+    io.to(room).emit('game:start', { gameId });
   });
 
   socket.on('game:move', ({ gameId, move }) => {
-    io.to(`game:${gameId}`).emit('game:move', { gameId, move });
+    const room = gameRoom(gameId);
+    logger.info('socket:game:move', { socketId: socket.id, gameId, moveType: move?.action });
+    io.to(room).emit('game:move', { gameId, move });
+    io.to(room).emit('game:update', { gameId, move });
   });
 
   socket.on('game:leave', ({ gameId, playerName }) => {
-    socket.leave(`game:${gameId}`);
-    io.to(`game:${gameId}`).emit('game:leave', { gameId, playerName });
+    const room = gameRoom(gameId);
+    logger.info('socket:game:leave', { socketId: socket.id, gameId, playerName });
+    socket.leave(room);
+    if (playerName) {
+      socket.leave(playerRoom(gameId, playerName));
+    }
+    // Broadcast to ALL remaining clients in room
+    io.to(room).emit('game:leave', { gameId, playerName });
+    io.to(room).emit('player:left', { gameId, playerName });
   });
 
   socket.on('chat-message', ({ gameId, message, username }) => {
-    io.to(`game:${gameId}`).emit('chat-message', {
+    const room = gameRoom(gameId);
+    logger.info('socket:chat-message', { socketId: socket.id, gameId, username });
+    io.to(room).emit('chat-message', {
       username,
       message,
       timestamp: new Date().toISOString(),
@@ -135,13 +180,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
+    logger.info('socket:disconnected', { socketId: socket.id });
   });
 });
 
 // === ERROR HANDLING ===
 app.use((err, req, res, next) => {
-  console.error('Server error:', err.stack);
+  logger.error('express:unhandled', { message: err?.message, stack: err?.stack });
   res.status(500).json({ success: false, message: 'Server error', error: err.message });
 });
 
@@ -153,27 +198,67 @@ app.use('*', (req, res) => {
 const startServices = async () => {
   try {
     await prisma.$connect();
-    console.log('Database connection established');
+    logger.info('services:database-connected');
     await tournamentScheduler.initialize();
-    blockchainListener.startListening();
-    submitterService.start();
-    console.log('All services initialized');
+    
+    // Only start blockchain listener if enabled (disable for local dev to avoid QuickNode limits)
+    if (process.env.ENABLE_BLOCKCHAIN_LISTENER !== 'false') {
+      blockchainListener.startListening();
+    } else {
+      logger.warn('services:blockchain-listener-disabled');
+    }
+    
+    // Temporarily disable submitter to test stability
+    if (process.env.ENABLE_SUBMITTER !== 'false') {
+      submitterService.start();
+    } else {
+      logger.warn('services:submitter-disabled');
+    }
+    logger.info('services:initialized');
   } catch (err) {
-    console.error('Failed to initialize services:', err.message);
+    logger.error('services:init-failed', { message: err.message, stack: err.stack });
   }
 };
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Scrabble Backend running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
-  console.log(`API root: http://localhost:${PORT}/`);
-  console.log(`Socket.IO enabled for real-time gameplay`);
+server.listen(PORT, '0.0.0.0', () => {
+  logger.info('server:started', { port: PORT, host: '0.0.0.0' });
+  logger.info('server:lan-hint', { url: `http://<your-ip>:${PORT}` });
+  logger.info('server:health-endpoint', { url: `http://<your-ip>:${PORT}/api/health` });
+  logger.info('server:api-root', { url: `http://<your-ip>:${PORT}/` });
+  logger.info('server:socket-enabled');
+  // Re-enable services now that we know they're not the problem
   startServices();
+  
+  // Keepalive to prevent Node from exiting
+  setInterval(() => {
+    // Keep process alive
+  }, 5000); // Every 5 seconds
+  
+  logger.info('server:ready');
+});
+
+// Global error handlers to prevent crashes
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('process:unhandled-rejection', { reason, promise });
+  // Don't exit - log and continue
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('process:uncaught-exception', { message: error?.message, stack: error?.stack });
+  // Don't exit - log and continue
+});
+
+process.on('exit', (code) => {
+  logger.warn('process:exit', { code });
+});
+
+process.on('beforeExit', (code) => {
+  logger.warn('process:before-exit', { code });
 });
 
 process.on('SIGTERM', async () => {
-  console.log('Shutting down server...');
+  logger.warn('process:sigterm');
   submitterService.stop();
   tournamentScheduler.stop();
   await prisma.$disconnect();

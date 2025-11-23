@@ -321,9 +321,11 @@ class TournamentScheduler {
    * Start periodic check for tournaments
    */
   startPeriodicCheck() {
-    cron.schedule('* * * * *', async () => {
-      await this.checkTournamentStatuses();
-    });
+    // Temporarily disabled for local dev stability
+    // cron.schedule('* * * * *', async () => {
+    //   await this.checkTournamentStatuses();
+    // });
+    console.log('⚠️ Periodic tournament check disabled for local dev');
   }
 
   /**
