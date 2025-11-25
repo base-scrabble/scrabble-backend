@@ -446,34 +446,48 @@ async function triggerSettlementIfEligible(game) {
   }
 }
 
-async function finalizeGame(tx, gameId, boardState, reason) {
+async function finalizeGame(dbClient, gameId, boardState, reason, currentPlayers = null) {
+  const client = dbClient || prisma;
   boardState.lastMove = {
     type: 'end',
     reason,
     timestamp: new Date().toISOString(),
   };
   const serialized = serializeBoardState(boardState);
-  const game = await tx.games.update({
+  const players = Array.isArray(currentPlayers) && currentPlayers.length ? currentPlayers : null;
+  const winner = players ? determineWinner(players) : null;
+  const winnerEnum = winner ? winnerEnumFromPlayer(winner.playerNumber) : null;
+
+  const data = {
+    status: 'completed',
+    boardState: serialized,
+    updatedAt: new Date(),
+  };
+  if (winnerEnum) {
+    data.winner = winnerEnum;
+  }
+
+  let game = await client.games.update({
     where: { id: gameId },
-    data: {
-      status: 'completed',
-      boardState: serialized,
-      updatedAt: new Date(),
-    },
+    data,
     include: baseGameInclude,
   });
 
-  const winner = determineWinner(game.game_players);
-  const winnerEnum = winner ? winnerEnumFromPlayer(winner.playerNumber) : 'draw';
+  if (!winnerEnum) {
+    const fallbackWinner = determineWinner(game.game_players);
+    const fallbackEnum = fallbackWinner ? winnerEnumFromPlayer(fallbackWinner.playerNumber) : 'draw';
+    game = await client.games.update({
+      where: { id: gameId },
+      data: { winner: fallbackEnum },
+      include: baseGameInclude,
+    });
+    return {
+      game,
+      winnerPayload: fallbackWinner ? { name: fallbackWinner.name, score: fallbackWinner.score } : null,
+    };
+  }
 
-  await tx.games.update({
-    where: { id: gameId },
-    data: {
-      winner: winnerEnum,
-    },
-  });
   game.winner = winnerEnum;
-
   return { game, winnerPayload: winner ? { name: winner.name, score: winner.score } : null };
 }
 
@@ -836,75 +850,81 @@ async function makeMove(req, res) {
       return res.status(400).json({ success: false, message: 'Only one move action allowed' });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const game = await tx.games.findUnique({
-        where: { id: numericGameId },
-        include: baseGameInclude,
-      });
-      if (!game) return { type: 'error', status: 404, message: 'Game not found' };
-      if (game.status !== 'active') {
-        return { type: 'error', status: 400, message: 'Game not active' };
-      }
+    const game = await prisma.games.findUnique({
+      where: { id: numericGameId },
+      include: baseGameInclude,
+    });
+    if (!game) {
+      return res.status(404).json({ success: false, message: 'Game not found' });
+    }
+    if (game.status !== 'active') {
+      return res.status(400).json({ success: false, message: 'Game not active' });
+    }
 
-      const player = findPlayerByName(game, cleanName);
-      if (!player) {
-        return { type: 'error', status: 404, message: 'Player not found' };
-      }
-      if (player.isActive === false) {
-        return { type: 'error', status: 400, message: 'Player inactive' };
-      }
-      if (game.currentTurn && game.currentTurn !== player.playerNumber) {
-        return { type: 'error', status: 409, message: 'Not your turn' };
-      }
+    const player = findPlayerByName(game, cleanName);
+    if (!player) {
+      return res.status(404).json({ success: false, message: 'Player not found' });
+    }
+    if (player.isActive === false) {
+      return res.status(400).json({ success: false, message: 'Player inactive' });
+    }
+    if (game.currentTurn && game.currentTurn !== player.playerNumber) {
+      return res.status(409).json({ success: false, message: 'Not your turn' });
+    }
 
-      const boardState = hydrateBoardState(game.boardState);
-      let rack = readRack(player);
-      let winnerPayload = null;
-      const now = new Date();
+    const boardState = hydrateBoardState(game.boardState);
+    let rack = readRack(player);
+    let winnerPayload = null;
+    const now = new Date();
+    const transactionalOps = [];
 
-      if (Array.isArray(placements) && placements.length) {
-        const moveAnalysis = analyzeMove(boardState, placements);
-        if (!moveAnalysis.ok) {
-          return { type: 'error', status: 400, message: `Invalid placement: ${moveAnalysis.reason}` };
+    if (Array.isArray(placements) && placements.length) {
+      const moveAnalysis = analyzeMove(boardState, placements);
+      if (!moveAnalysis.ok) {
+        return res.status(400).json({ success: false, message: `Invalid placement: ${moveAnalysis.reason}` });
+      }
+      for (const wordData of moveAnalysis.words || []) {
+        if (isValidWord && !isValidWord(wordData.word)) {
+          return res.status(400).json({ success: false, message: `Invalid word: ${wordData.word}` });
         }
-        for (const wordData of moveAnalysis.words || []) {
-          if (isValidWord && !isValidWord(wordData.word)) {
-            return { type: 'error', status: 400, message: `Invalid word: ${wordData.word}` };
-          }
-        }
+      }
 
-        const letters = placements.map((p) => p.rackLetter || p.letter);
-        const removal = removeLettersFromRack(rack, letters);
-        if (!removal.ok) {
-          return { type: 'error', status: 400, message: 'Tiles not in rack' };
-        }
-        rack = removal.remaining;
-        boardState.grid = moveAnalysis.updatedGrid;
-        boardState.passesInRow = 0;
-        boardState.lastMove = {
-          type: 'placement',
-          player: cleanName,
-          score: moveAnalysis.score,
-          placements,
-          timestamp: now.toISOString(),
-        };
+      const letters = placements.map((p) => p.rackLetter || p.letter);
+      const removal = removeLettersFromRack(rack, letters);
+      if (!removal.ok) {
+        return res.status(400).json({ success: false, message: 'Tiles not in rack' });
+      }
+      rack = removal.remaining;
+      boardState.grid = moveAnalysis.updatedGrid;
+      boardState.passesInRow = 0;
+      boardState.lastMove = {
+        type: 'placement',
+        player: cleanName,
+        score: moveAnalysis.score,
+        placements,
+        timestamp: now.toISOString(),
+      };
 
-        const refill = fillRack(boardState, rack);
-        boardState.bag = refill.bag;
-        rack = refill.rack;
+      const refill = fillRack(boardState, rack);
+      boardState.bag = refill.bag;
+      rack = refill.rack;
 
-        await tx.game_players.update({
+      player.score = (player.score || 0) + moveAnalysis.score;
+      player.tiles = JSON.stringify(rack);
+
+      transactionalOps.push(
+        prisma.game_players.update({
           where: { id: player.id },
           data: {
-            score: (player.score || 0) + moveAnalysis.score,
-            tiles: JSON.stringify(rack),
+            score: player.score,
+            tiles: player.tiles,
             updatedAt: now,
           },
-        });
-        player.score = (player.score || 0) + moveAnalysis.score;
-        player.tiles = JSON.stringify(rack);
+        }),
+      );
 
-        await tx.moves.create({
+      transactionalOps.push(
+        prisma.moves.create({
           data: {
             gameId: numericGameId,
             userId: player.userId,
@@ -915,84 +935,99 @@ async function makeMove(req, res) {
             createdAt: now,
             updatedAt: now,
           },
-        });
-      } else if (Array.isArray(exchanged) && exchanged.length) {
-        if (boardState.bag.length < exchanged.length) {
-          return { type: 'error', status: 400, message: 'Not enough tiles in bag to exchange' };
-        }
-        const removal = removeLettersFromRack(rack, exchanged);
-        if (!removal.ok) {
-          return { type: 'error', status: 400, message: 'Tiles not in rack' };
-        }
-        rack = removal.remaining;
-        boardState.bag = shuffleBag([...boardState.bag, ...exchanged]);
-        const refill = fillRack(boardState, rack);
-        boardState.bag = refill.bag;
-        rack = refill.rack;
-        boardState.passesInRow = (boardState.passesInRow || 0) + 1;
-        boardState.lastMove = {
-          type: 'exchange',
-          player: cleanName,
-          count: exchanged.length,
-          timestamp: now.toISOString(),
-        };
+        }),
+      );
+    } else if (Array.isArray(exchanged) && exchanged.length) {
+      if (boardState.bag.length < exchanged.length) {
+        return res.status(400).json({ success: false, message: 'Not enough tiles in bag to exchange' });
+      }
+      const removal = removeLettersFromRack(rack, exchanged);
+      if (!removal.ok) {
+        return res.status(400).json({ success: false, message: 'Tiles not in rack' });
+      }
+      rack = removal.remaining;
+      boardState.bag = shuffleBag([...boardState.bag, ...exchanged]);
+      const refill = fillRack(boardState, rack);
+      boardState.bag = refill.bag;
+      rack = refill.rack;
+      boardState.passesInRow = (boardState.passesInRow || 0) + 1;
+      boardState.lastMove = {
+        type: 'exchange',
+        player: cleanName,
+        count: exchanged.length,
+        timestamp: now.toISOString(),
+      };
 
-        await tx.game_players.update({
+      player.tiles = JSON.stringify(rack);
+      transactionalOps.push(
+        prisma.game_players.update({
           where: { id: player.id },
           data: {
-            tiles: JSON.stringify(rack),
+            tiles: player.tiles,
             updatedAt: now,
           },
-        });
-        player.tiles = JSON.stringify(rack);
-      } else if (passed) {
-        boardState.passesInRow = (boardState.passesInRow || 0) + 1;
-        boardState.lastMove = {
-          type: 'pass',
-          player: cleanName,
-          timestamp: now.toISOString(),
-        };
+        }),
+      );
+    } else if (passed) {
+      boardState.passesInRow = (boardState.passesInRow || 0) + 1;
+      boardState.lastMove = {
+        type: 'pass',
+        player: cleanName,
+        timestamp: now.toISOString(),
+      };
+    }
+
+    const reason = shouldAutoComplete(boardState, game.game_players);
+    let updatedGame;
+    if (reason) {
+      if (transactionalOps.length) {
+        await prisma.$transaction(transactionalOps);
       }
-
-      const reason = shouldAutoComplete(boardState, game.game_players);
-      if (reason) {
-        const completion = await finalizeGame(tx, numericGameId, boardState, reason);
-        winnerPayload = completion.winnerPayload;
-        return { type: 'ok', game: completion.game, rack, winnerPayload };
-      }
-
-      const nextTurn = nextTurnNumber(game.game_players, player.playerNumber);
-      const updatedGame = await tx.games.update({
-        where: { id: numericGameId },
-        data: {
-          boardState: serializeBoardState(boardState),
-          currentTurn: nextTurn,
-          updatedAt: now,
-        },
-        include: baseGameInclude,
-      });
-
-      return { type: 'ok', game: updatedGame, rack, winnerPayload: null };
-    });
-
-    if (result.type === 'error') {
-      return res.status(result.status).json({ success: false, message: result.message });
+      const completion = await finalizeGame(prisma, numericGameId, boardState, reason, game.game_players);
+      updatedGame = completion.game;
+      winnerPayload = completion.winnerPayload;
+    } else {
+      transactionalOps.push(
+        prisma.games.update({
+          where: { id: numericGameId },
+          data: {
+            boardState: serializeBoardState(boardState),
+            currentTurn: nextTurnNumber(game.game_players, player.playerNumber),
+            updatedAt: now,
+          },
+          include: baseGameInclude,
+        }),
+      );
+      const results = await prisma.$transaction(transactionalOps);
+      updatedGame = results[results.length - 1];
     }
 
     const io = getIo(req);
-    if (result.winnerPayload) {
-      emitGameState(io, result.game, 'game:over', { winner: result.winnerPayload });
-      await triggerSettlementIfEligible(result.game);
+    if (winnerPayload) {
+      emitGameState(io, updatedGame, 'game:over', { winner: winnerPayload });
+      await triggerSettlementIfEligible(updatedGame);
     } else {
-      emitGameState(io, result.game, 'game:update');
+      emitGameState(io, updatedGame, 'game:update');
     }
 
-    return respondWithGame(res, result.game, result.rack, {
-      winner: result.winnerPayload,
+    return respondWithGame(res, updatedGame, rack, {
+      winner: winnerPayload,
     });
   } catch (err) {
-    logger.error('game:move:error', { message: err.message, stack: err.stack });
-    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+    const meta = {
+      message: err?.message,
+      stack: err?.stack,
+      gameId: req?.params?.gameId,
+      playerName: req?.body?.playerName,
+    };
+    logger.error('game:move:error', meta);
+    console.error('MOVE_ERROR', meta, err);
+    return res.status(500).json({
+      success: false,
+      error: 'move-crash',
+      message: err?.message || 'Server error',
+      stack: err?.stack,
+    });
   }
 }
 
