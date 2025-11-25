@@ -31,6 +31,10 @@ const { gameRoom, playerRoom } = require('./lib/rooms.cjs');
 const app = express();
 const server = http.createServer(app);
 
+// Render and other proxies set X-Forwarded-* headers; trust first hop so
+// express-rate-limit sees the real client IP instead of throwing errors.
+app.set('trust proxy', 1);
+
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
