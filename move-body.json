@@ -1,0 +1,33 @@
+{
+    "playerName":  "AgentHost",
+    "placements":  [
+                       {
+                           "row":  7,
+                           "rackLetter":  "?",
+                           "isBlank":  true,
+                           "col":  7,
+                           "letter":  "M"
+                       },
+                       {
+                           "row":  7,
+                           "rackLetter":  "A",
+                           "isBlank":  false,
+                           "col":  8,
+                           "letter":  "A"
+                       },
+                       {
+                           "row":  7,
+                           "rackLetter":  "I",
+                           "isBlank":  false,
+                           "col":  9,
+                           "letter":  "I"
+                       },
+                       {
+                           "row":  7,
+                           "rackLetter":  "L",
+                           "isBlank":  false,
+                           "col":  10,
+                           "letter":  "L"
+                       }
+                   ]
+}

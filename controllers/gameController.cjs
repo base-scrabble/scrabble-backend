@@ -1,7 +1,9 @@
 // controllers/gameController.cjs
 
+const crypto = require('node:crypto');
 const { prisma } = require('../lib/prisma.cjs');
 const logger = require('../lib/logger.cjs');
+const memoryDiagnostics = require('../lib/memoryDiagnostics.cjs');
 const { gameRoom, playerRoom } = require('../lib/rooms.cjs');
 const {
   hydrateBoardState,
@@ -300,10 +302,24 @@ function emitGameState(io, game, event = 'game:state', extra = {}) {
   if (!io || !game) return;
   const payload = formatGameState(game, extra);
   if (!payload) return;
+  const boardBytes = payload.boardState
+    ? Buffer.byteLength(JSON.stringify(payload.boardState))
+    : null;
+  memoryDiagnostics.trackGameSnapshot(game.id, {
+    status: payload.status,
+    bagCount: payload.bagCount,
+    passesInRow: payload.passesInRow,
+    moveCount: Array.isArray(payload.moves) ? payload.moves.length : game.moves?.length,
+    boardBytes,
+  });
   payload.rack = null; // never broadcast racks
   const room = gameRoom(game.id);
   io.to(room).emit(event, payload);
   logger.debug('game:socket-broadcast', { event, gameId: game.id });
+  if (payload.status === 'completed' || extra?.winner) {
+    memoryDiagnostics.dropGame(game.id);
+  }
+  memoryDiagnostics.maybeCaptureHeapSnapshot('game-state').catch(() => {});
 }
 
 function emitPlayerEvent(io, gameId, playerName, event) {
@@ -446,8 +462,8 @@ async function triggerSettlementIfEligible(game) {
   }
 }
 
-async function finalizeGame(dbClient, gameId, boardState, reason, currentPlayers = null) {
-  const client = dbClient || prisma;
+async function finalizeGame(gameId, boardState, reason, currentPlayers = null) {
+  const client = prisma;
   boardState.lastMove = {
     type: 'end',
     reason,
@@ -499,6 +515,22 @@ function respondWithGame(res, game, rack = null, options = {}) {
     winner: options.winner,
     finalScores: options.finalScores,
   });
+  if (payload) {
+    const boardBytes = payload.boardState
+      ? Buffer.byteLength(JSON.stringify(payload.boardState))
+      : null;
+    memoryDiagnostics.trackGameSnapshot(game.id, {
+      status: payload.status,
+      bagCount: payload.bagCount,
+      passesInRow: payload.passesInRow,
+      moveCount: Array.isArray(payload.moves) ? payload.moves.length : null,
+      boardBytes,
+    });
+    if (payload.status === 'completed') {
+      memoryDiagnostics.dropGame(game.id);
+    }
+    memoryDiagnostics.maybeCaptureHeapSnapshot('respond-game').catch(() => {});
+  }
   return res.status(options.status || 200).json({
     success: true,
     data: {
@@ -692,40 +724,52 @@ async function leaveGame(req, res) {
       player.isActive = false;
       player.tiles = '[]';
 
-      let updatedGame;
-      let winnerPayload = null;
       const reason = shouldAutoComplete(boardState, game.game_players);
       if (reason) {
-        const completion = await finalizeGame(tx, numericGameId, boardState, reason);
-        updatedGame = completion.game;
-        winnerPayload = completion.winnerPayload;
-      } else {
-        boardState.lastMove = {
-          type: 'leave',
-          player: cleanName,
-          timestamp: new Date().toISOString(),
-        };
-        updatedGame = await tx.games.update({
-          where: { id: numericGameId },
-          data: {
-            boardState: serializeBoardState(boardState),
-            currentTurn: player.playerNumber === game.currentTurn
-              ? nextTurnNumber(game.game_players, player.playerNumber)
-              : game.currentTurn,
-            updatedAt: new Date(),
+        return {
+          finalizeAfterTx: {
+            boardState: JSON.parse(JSON.stringify(boardState)),
+            reason,
+            playersSnapshot: game.game_players.map((p) => ({ ...p })),
           },
-          include: baseGameInclude,
-        });
+        };
       }
 
-      return { updatedGame, winnerPayload };
+      boardState.lastMove = {
+        type: 'leave',
+        player: cleanName,
+        timestamp: new Date().toISOString(),
+      };
+      const updatedGame = await tx.games.update({
+        where: { id: numericGameId },
+        data: {
+          boardState: serializeBoardState(boardState),
+          currentTurn: player.playerNumber === game.currentTurn
+            ? nextTurnNumber(game.game_players, player.playerNumber)
+            : game.currentTurn,
+          updatedAt: new Date(),
+        },
+        include: baseGameInclude,
+      });
+
+      return { updatedGame, winnerPayload: null };
     });
 
     if (!result) {
       return res.status(404).json({ success: false, message: 'Player not found' });
     }
 
-    const { updatedGame, winnerPayload } = result;
+    let { updatedGame, winnerPayload } = result;
+    if (result.finalizeAfterTx) {
+      const completion = await finalizeGame(
+        numericGameId,
+        result.finalizeAfterTx.boardState,
+        result.finalizeAfterTx.reason,
+        result.finalizeAfterTx.playersSnapshot,
+      );
+      updatedGame = completion.game;
+      winnerPayload = completion.winnerPayload;
+    }
     const io = getIo(req);
     emitPlayerEvent(io, updatedGame.id, cleanName, 'player:left');
     if (winnerPayload) {
@@ -983,7 +1027,12 @@ async function makeMove(req, res) {
       if (transactionalOps.length) {
         await prisma.$transaction(transactionalOps);
       }
-      const completion = await finalizeGame(prisma, numericGameId, boardState, reason, game.game_players);
+      const completion = await finalizeGame(
+        numericGameId,
+        boardState,
+        reason,
+        game.game_players,
+      );
       updatedGame = completion.game;
       winnerPayload = completion.winnerPayload;
     } else {
@@ -1014,11 +1063,15 @@ async function makeMove(req, res) {
       winner: winnerPayload,
     });
   } catch (err) {
+    const errorId = typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `move-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const meta = {
       message: err?.message,
       stack: err?.stack,
       gameId: req?.params?.gameId,
       playerName: req?.body?.playerName,
+      errorId,
     };
     logger.error('game:move:error', meta);
     console.error('MOVE_ERROR', meta, err);
@@ -1027,6 +1080,7 @@ async function makeMove(req, res) {
       error: 'move-crash',
       message: err?.message || 'Server error',
       stack: err?.stack,
+      errorId,
     });
   }
 }
@@ -1043,20 +1097,16 @@ async function endGame(req, res) {
       return res.status(400).json({ success: false, message: 'Invalid game id' });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const game = await tx.games.findUnique({
-        where: { id: numericGameId },
-        include: baseGameInclude,
-      });
-      if (!game) return null;
-      const boardState = hydrateBoardState(game.boardState);
-      const completion = await finalizeGame(tx, numericGameId, boardState, 'manual');
-      return completion;
+    const game = await prisma.games.findUnique({
+      where: { id: numericGameId },
+      include: baseGameInclude,
     });
-
-    if (!result) {
+    if (!game) {
       return res.status(404).json({ success: false, message: 'Game not found' });
     }
+
+    const boardState = hydrateBoardState(game.boardState);
+    const result = await finalizeGame(numericGameId, boardState, 'manual', game.game_players);
 
     const io = getIo(req);
     emitGameState(io, result.game, 'game:over', { winner: result.winnerPayload });

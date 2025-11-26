@@ -25,11 +25,17 @@ const tournamentScheduler = require('./services/tournamentScheduler.cjs');
 const blockchainListener = require('./services/blockchainListener.cjs');
 const submitterService = require('./services/submitterService.cjs');
 const logger = require('./lib/logger.cjs');
+const memoryDiagnostics = require('./lib/memoryDiagnostics.cjs');
 
 const { gameRoom, playerRoom } = require('./lib/rooms.cjs');
 
 const app = express();
 const server = http.createServer(app);
+
+// Increase the V8 heap ceiling slightly so Render has enough headroom to
+// capture diagnostics before the process restarts. This is temporary until we
+// fully resolve the memory regression.
+memoryDiagnostics.ensureHeapLimit();
 
 // Render and other proxies set X-Forwarded-* headers; trust first hop so
 // express-rate-limit sees the real client IP instead of throwing errors.

@@ -3,6 +3,18 @@
 
 const rateLimit = require('express-rate-limit');
 
+function resolveClientIp(req) {
+  if (!req) return 'unknown';
+  const forwarded = req.headers?.['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length) {
+    return forwarded.split(',')[0].trim();
+  }
+  if (req.ip) return req.ip;
+  if (req.connection?.remoteAddress) return req.connection.remoteAddress;
+  if (req.socket?.remoteAddress) return req.socket.remoteAddress;
+  return 'unknown';
+}
+
 /**
  * General API rate limiter (15 min window)
  * 100 requests per IP
@@ -14,6 +26,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   skip: (req) => process.env.NODE_ENV !== 'production', // Disable in dev
+  keyGenerator: resolveClientIp,
 });
 
 /**
@@ -27,6 +40,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV !== 'production',
+  keyGenerator: resolveClientIp,
 });
 
 /**
@@ -40,6 +54,7 @@ const gameLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV !== 'production',
+  keyGenerator: resolveClientIp,
 });
 
 module.exports = {
