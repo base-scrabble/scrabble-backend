@@ -1,7 +1,6 @@
 // server.cjs
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const { Server } = require('socket.io');
 const http = require('http');
 const helmet = require('helmet');
@@ -66,28 +65,28 @@ function isOriginAllowed(origin) {
   });
 }
 
-const corsOptions = {
-  origin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
+const allowHeaders = ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'];
+const allowMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'];
 
-    if (isOriginAllowed(origin)) {
-      return callback(null, origin);
-    }
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
-};
+function applyCorsHeaders(req, res) {
+  const origin = req.headers.origin;
+  if (!origin || !isOriginAllowed(origin)) {
+    return false;
+  }
+
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', allowMethods.join(','));
+  res.setHeader('Access-Control-Allow-Headers', allowHeaders.join(','));
+  res.setHeader('Vary', 'Origin');
+  return true;
+}
 
 app.use((req, res, next) => {
-  const { origin } = req.headers;
-  if (isOriginAllowed(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.append('Vary', 'Origin');
+  const corsApplied = applyCorsHeaders(req, res);
+  if (corsApplied && req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
   }
   next();
 });
@@ -107,8 +106,6 @@ const io = new Server(server, {
 app.set('io', io);
 global.__io = io;
 
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
 app.use(helmet());
 app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
