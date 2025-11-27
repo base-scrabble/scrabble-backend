@@ -70,13 +70,13 @@ const corsOptions = {
     });
 
     if (allowOrigin) {
-      return callback(null, true);
+      return callback(null, origin);
     }
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
 };
 
 const io = new Server(server, {
