@@ -54,15 +54,35 @@ const allowedOrigins = [
 ];
 
 const corsOptions = {
-  origin: allowedOrigins,
-  methods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+  origin(origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const allowOrigin = allowedOrigins.some((entry) => {
+      if (typeof entry === 'string') {
+        return entry === origin;
+      }
+      if (entry instanceof RegExp) {
+        return entry.test(origin);
+      }
+      return false;
+    });
+
+    if (allowOrigin) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    methods: ['GET', 'POST'],
     credentials: true,
   },
   // Add explicit transport configuration
