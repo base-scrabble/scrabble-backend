@@ -53,23 +53,26 @@ const allowedOrigins = [
   /http:\/\/192\.168\.\d+\.\d+:5173/,
 ];
 
+function isOriginAllowed(origin) {
+  if (!origin) return false;
+  return allowedOrigins.some((entry) => {
+    if (typeof entry === 'string') {
+      return entry === origin;
+    }
+    if (entry instanceof RegExp) {
+      return entry.test(origin);
+    }
+    return false;
+  });
+}
+
 const corsOptions = {
   origin(origin, callback) {
     if (!origin) {
       return callback(null, true);
     }
 
-    const allowOrigin = allowedOrigins.some((entry) => {
-      if (typeof entry === 'string') {
-        return entry === origin;
-      }
-      if (entry instanceof RegExp) {
-        return entry.test(origin);
-      }
-      return false;
-    });
-
-    if (allowOrigin) {
+    if (isOriginAllowed(origin)) {
       return callback(null, origin);
     }
     return callback(new Error('Not allowed by CORS'));
@@ -78,6 +81,16 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
 };
+
+app.use((req, res, next) => {
+  const { origin } = req.headers;
+  if (isOriginAllowed(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.append('Vary', 'Origin');
+  }
+  next();
+});
 
 const io = new Server(server, {
   cors: {
