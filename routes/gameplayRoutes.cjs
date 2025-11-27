@@ -23,6 +23,7 @@ router.post('/:gameId/start', startGame);
 router.get('/:gameId', getGameState);
 router.post('/:gameId/move', makeMove);
 router.post('/:gameId/skip', skipTurn);
+router.post('/:gameId/pass', skipTurn);
 router.post('/:gameId/end', endGame);
 
 module.exports = router;
