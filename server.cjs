@@ -46,6 +46,7 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
   'http://localhost:4173',
   'http://127.0.0.1:4173',
+  'https://scrabble-backend-production.up.railway.app',
   'https://basescrabble.xyz',
   'https://www.basescrabble.xyz',
   'https://scrabble-frontend-lyart.vercel.app',
@@ -127,14 +128,8 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/api/health', async (req, res) => {
-  try {
-    const result = await prisma.$queryRaw`SELECT NOW()`;
-    res.json({ success: true, time: result[0].now, message: 'Database connection OK' });
-  } catch (err) {
-    logger.error('health-check:error', { message: err.message, stack: err.stack });
-    res.status(500).json({ success: false, message: 'Database query failed', error: err.message });
-  }
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
 });
 
 app.get('/api/stats', async (req, res) => {
