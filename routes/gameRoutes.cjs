@@ -5,6 +5,7 @@ const { prisma } = require('../lib/prisma.cjs');
 const { authenticate } = require('../middleware/auth.cjs');
 const signatureService = require('../services/signatureService.cjs');
 const nonceService = require('../services/nonceService.cjs');
+const { listGames } = require('../controllers/gameController.cjs');
 
 console.log('Game signature routes loaded'); // ← ADDED
 
@@ -207,5 +208,8 @@ router.post('/cancel-signature', authenticate, async (req, res) => {
     });
   }
 });
+
+// Legacy compatibility endpoint for clients still calling /api/game/public
+router.get('/public', listGames);
 
 module.exports = router;

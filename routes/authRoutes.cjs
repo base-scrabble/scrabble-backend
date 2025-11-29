@@ -8,6 +8,14 @@ const nonceService = require('../services/nonceService.cjs');
 const { ensureUser } = require('../controllers/userController.cjs');
 
 /**
+ * @route GET /api/auth/check
+ * @desc Lightweight auth service health check used by clients
+ */
+router.get('/check', (req, res) => {
+  res.json({ success: true, message: 'Auth service reachable', timestamp: new Date().toISOString() });
+});
+
+/**
  * @route POST /api/auth/register
  * @desc Register/ensure user via Privy JWT
  * @access Public

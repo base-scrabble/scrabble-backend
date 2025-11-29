@@ -18,6 +18,7 @@ const gameplayRoutes = require('./routes/gameplayRoutes.cjs');
 const tournamentRoutes = require('./routes/tournamentRoutes.cjs');
 const adminRoutes = require('./routes/adminRoutes.cjs');
 const blockchainRoutes = require('./routes/blockchainRoutes.cjs');
+const { listGames } = require('./controllers/gameController.cjs');
 
 // === SERVICES ===
 const tournamentScheduler = require('./services/tournamentScheduler.cjs');
@@ -157,6 +158,9 @@ app.use('/api/gameplay', gameLimiter, gameplayRoutes);   // ← GAMEPLAY (modera
 app.use('/api/tournaments', apiLimiter, tournamentRoutes);
 app.use('/api/admin', authLimiter, adminRoutes);
 app.use('/api/blockchain', apiLimiter, blockchainRoutes);
+
+// Legacy lobby endpoint kept for backwards compatibility with older clients
+app.get('/api/lobby/list', gameLimiter, (req, res) => listGames(req, res));
 
 // === SOCKET.IO ===
 io.on('connection', (socket) => {
