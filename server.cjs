@@ -41,31 +41,43 @@ memoryDiagnostics.ensureHeapLimit();
 // express-rate-limit sees the real client IP instead of throwing errors.
 app.set('trust proxy', 1);
 
-const allowedOrigins = [
+const staticOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
   'http://localhost:4173',
   'http://127.0.0.1:4173',
-  'http://10.204.251.6:4173',
   'https://scrabble-backend-production.up.railway.app',
   'https://basescrabble.xyz',
   'https://www.basescrabble.xyz',
   'https://scrabble-frontend-lyart.vercel.app',
-  /http:\/\/192\.168\.\d+\.\d+:5173/,
 ];
+
+const lanPatterns = [
+  /^http:\/\/192\.168\./,
+  /^http:\/\/10\./,
+  /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./,
+];
+
+function isLanOrigin(origin) {
+  if (!origin) return false;
+  try {
+    const parsed = new URL(origin);
+    if (parsed.port !== '4173') {
+      return false;
+    }
+  } catch (err) {
+    return false;
+  }
+  return lanPatterns.some((pattern) => pattern.test(origin));
+}
 
 function isOriginAllowed(origin) {
   if (!origin) return false;
-  return allowedOrigins.some((entry) => {
-    if (typeof entry === 'string') {
-      return entry === origin;
-    }
-    if (entry instanceof RegExp) {
-      return entry.test(origin);
-    }
-    return false;
-  });
+  if (isLanOrigin(origin)) {
+    return true;
+  }
+  return staticOrigins.includes(origin);
 }
 
 const allowHeaders = ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'];
@@ -96,7 +108,17 @@ app.use((req, res, next) => {
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, false);
+        return;
+      }
+      if (isOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origin not allowed by Socket.IO CORS'), false);
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
