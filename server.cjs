@@ -47,6 +47,7 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
   'http://localhost:4173',
   'http://127.0.0.1:4173',
+  'http://10.204.251.6:4173',
   'https://scrabble-backend-production.up.railway.app',
   'https://basescrabble.xyz',
   'https://www.basescrabble.xyz',
