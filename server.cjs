@@ -41,96 +41,84 @@ memoryDiagnostics.ensureHeapLimit();
 // express-rate-limit sees the real client IP instead of throwing errors.
 app.set('trust proxy', 1);
 
-const staticOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://127.0.0.1:5173',
-  'http://localhost:4173',
-  'http://127.0.0.1:4173',
-  'https://scrabble-backend-production.up.railway.app',
-  'https://basescrabble.xyz',
-  'https://www.basescrabble.xyz',
-  'https://scrabble-frontend-lyart.vercel.app',
+// --- CLEAN GLOBAL CORS SETUP (REPLACEMENT) ---
+const cors = require('cors');
+
+// Full allowed origins list
+const allowedOrigins = [
+  "http://localhost:41",
+  "http://127.0.0.1:41",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173",
+
+  // LAN / WiFi dev
+  "http://192.168.",
+  "http://10.",
+  "http://172.",
+
+  // Local machine discovered IP
+  "http://10.225.25.6:41",
+
+  // Production domains
+  "https://basescrabble.xyz",
+  "https://www.basescrabble.xyz",
+  "https://scrabble-frontend.vercel.app",
+
+  // Backend endpoint
+  "https://scrabble-backend-production.up.railway.app"
 ];
 
-const lanPatterns = [
-  /^http:\/\/192\.168\./,
-  /^http:\/\/10\./,
-  /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./,
-];
-
-function isLanOrigin(origin) {
+// Allow LAN ranges automatically
+function isAllowedOrigin(origin) {
   if (!origin) return false;
-  try {
-    const parsed = new URL(origin);
-    if (parsed.port !== '4173') {
-      return false;
-    }
-  } catch (err) {
-    return false;
-  }
-  return lanPatterns.some((pattern) => pattern.test(origin));
-}
 
-function isOriginAllowed(origin) {
-  if (!origin) return false;
-  if (isLanOrigin(origin)) {
+  // Exact matches
+  if (allowedOrigins.includes(origin)) return true;
+
+  // LAN ranges
+  if (
+    origin.startsWith("http://192.168.") ||
+    origin.startsWith("http://10.") ||
+    /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(origin)
+  ) {
     return true;
   }
-  return staticOrigins.includes(origin);
+
+  console.log("❌ Blocked CORS origin:", origin);
+  return false;
 }
 
-const allowHeaders = ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'];
-const allowMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'];
+// Global CORS
+app.use(
+  cors({
+    origin: function (origin, cb) {
+      if (!origin) return cb(null, true);
+      if (isAllowedOrigin(origin)) return cb(null, true);
+      return cb(new Error("CORS: Origin Not Allowed"), false);
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Origin", "Content-Type", "Authorization", "Accept"],
+    credentials: true,
+  })
+);
 
-function applyCorsHeaders(req, res) {
-  const origin = req.headers.origin;
-  if (!origin || !isOriginAllowed(origin)) {
-    return false;
-  }
-
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', allowMethods.join(','));
-  res.setHeader('Access-Control-Allow-Headers', allowHeaders.join(','));
-  res.setHeader('Vary', 'Origin');
-  return true;
-}
-
-const cors = require('cors'); // ensure this is present at the top of the file
-
-// Express CORS middleware using existing isOriginAllowed() and allowMethods/allowHeaders arrays
-const expressCorsOptions = {
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (isOriginAllowed(origin)) return callback(null, true);
-    logger.warn("express:cors:blocked-origin", { origin });
-    return callback(new Error("Not allowed by CORS"), false);
-  },
-  methods: allowMethods,
-  credentials: true,
-  allowedHeaders: allowHeaders,
-  optionsSuccessStatus: 200
-};
-
-app.use(cors(expressCorsOptions));
-app.options("*", cors(expressCorsOptions));
+app.options("*", (req, res) => {
+  res.sendStatus(200);
+});
+// --- END CORS SETUP ---
 
 const io = new Server(server, {
   cors: {
-    origin(origin, callback) {
-      if (!origin) {
-        callback(null, false);
-        return;
-      }
-      if (isOriginAllowed(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Origin not allowed by Socket.IO CORS'), false);
-      }
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      console.log("❌ Blocked Socket.IO origin:", origin);
+      callback("Socket.IO CORS Blocked", false);
     },
-    methods: ['GET', 'POST'],
-    credentials: true,
+    methods: ["GET", "POST"],
+    credentials: true
   },
   transports: ['polling', 'websocket'],
   allowEIO3: true,
