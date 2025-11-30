@@ -97,42 +97,24 @@ function applyCorsHeaders(req, res) {
   return true;
 }
 
-app.use(cors({
-  const allowedOrigins = [
-    "http://localhost:41",
-    "http://127.0.0.1:41",
-    "http://localhost",
-    "http://127.0.0.1",
-    "https://scrabble-frontend.vercel.app",
-    "https://www.basescrabble.xyz"
-  ];
+const cors = require('cors'); // ensure this is present at the top of the file
 
-  function isAllowedOrigin(origin) {
-    if (!origin) return false;
-    // Exact matches
-    if (allowedOrigins.includes(origin)) return true;
-    // LAN IP ranges
-    if (origin.startsWith("http://10.")) return true;
-    if (origin.startsWith("http://192.168.")) return true;
-    for (let i = 16; i <= 31; i++) {
-      if (origin.startsWith(`http://172.${i}.`)) return true;
-    }
-    return false;
-  }
+// Express CORS middleware using existing isOriginAllowed() and allowMethods/allowHeaders arrays
+const expressCorsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (isOriginAllowed(origin)) return callback(null, true);
+    logger.warn("express:cors:blocked-origin", { origin });
+    return callback(new Error("Not allowed by CORS"), false);
+  },
+  methods: allowMethods,
+  credentials: true,
+  allowedHeaders: allowHeaders,
+  optionsSuccessStatus: 200
+};
 
-  app.use(cors({
-    origin: function(origin, callback) {
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-      } else {
-        console.log("Blocked CORS origin:", origin);
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization"]
-  }));
+app.use(cors(expressCorsOptions));
+app.options("*", cors(expressCorsOptions));
 
 const io = new Server(server, {
   cors: {
