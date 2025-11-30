@@ -97,14 +97,19 @@ function applyCorsHeaders(req, res) {
   return true;
 }
 
-app.use((req, res, next) => {
-  const corsApplied = applyCorsHeaders(req, res);
-  if (corsApplied && req.method === 'OPTIONS') {
-    res.status(204).end();
-    return;
-  }
-  next();
-});
+app.use(cors({
+  origin: [
+    "http://localhost:41",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:41",
+    "https://scrabble-frontend-production.up.railway.app",
+    "https://www.basescrabble.xyz"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
 const io = new Server(server, {
   cors: {
@@ -122,11 +127,28 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true,
   },
-  // Add explicit transport configuration
   transports: ['polling', 'websocket'],
-  allowEIO3: true, // Support older Engine.IO clients if needed
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
+// Debounce reconnect attempts to prevent aggressive reconnect spam
+const reconnectDebounce = new Map();
+function shouldAllowReconnect(socketId) {
+  const now = Date.now();
+  const last = reconnectDebounce.get(socketId) || 0;
+  if (now - last < 5000) return false; // 5s debounce
+  reconnectDebounce.set(socketId, now);
+  return true;
+}
+io.on('connection', (socket) => {
+  socket.on('reconnect_attempt', () => {
+    if (!shouldAllowReconnect(socket.id)) {
+      socket.disconnect(true);
+    }
+  });
+});
 // Make io available to controllers at runtime to avoid circular require issues
 app.set('io', io);
 global.__io = io;
