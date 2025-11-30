@@ -98,18 +98,41 @@ function applyCorsHeaders(req, res) {
 }
 
 app.use(cors({
-  origin: [
+  const allowedOrigins = [
     "http://localhost:41",
-    "http://localhost:5173",
-    "http://localhost:3000",
     "http://127.0.0.1:41",
-    "https://scrabble-frontend-production.up.railway.app",
+    "http://localhost",
+    "http://127.0.0.1",
+    "https://scrabble-frontend.vercel.app",
     "https://www.basescrabble.xyz"
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+  ];
+
+  function isAllowedOrigin(origin) {
+    if (!origin) return false;
+    // Exact matches
+    if (allowedOrigins.includes(origin)) return true;
+    // LAN IP ranges
+    if (origin.startsWith("http://10.")) return true;
+    if (origin.startsWith("http://192.168.")) return true;
+    for (let i = 16; i <= 31; i++) {
+      if (origin.startsWith(`http://172.${i}.`)) return true;
+    }
+    return false;
+  }
+
+  app.use(cors({
+    origin: function(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        console.log("Blocked CORS origin:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"]
+  }));
 
 const io = new Server(server, {
   cors: {
