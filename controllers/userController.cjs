@@ -104,36 +104,18 @@ const ensureUser = async (req, res, { wallet_address, email, sub, username }) =>
 
     const finalUsername = username || `user_${sub.slice(-6)}`;
 
-    const user = await prisma.users.upsert({
-      where: { address: wallet_address },
-      update: {
-        email,
-        username: finalUsername,
-        updatedAt: new Date(),
-      },
-      create: {
-        address: wallet_address,
-        email,
-        username: finalUsername,
-        password: '', // ← ADDED: REQUIRED BY DB
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        totalScore: 0,
-        gamesPlayed: 0,
-        gamesWon: 0,
-      },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        address: true,
-        totalScore: true,
-        gamesPlayed: true,
-        gamesWon: true,
-        avatar: true
-      }
+    const { ensureUser } = require('../lib/users.cjs');
+    const user = await ensureUser({
+      address: wallet_address,
+      email,
+      username: finalUsername,
+      password: '',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      totalScore: 0,
+      gamesPlayed: 0,
+      gamesWon: 0,
     });
-
     return user;
   } catch (err) {
     console.error('Ensure user error:', err.message);
@@ -183,23 +165,14 @@ async function updateUser(req, res) {
       });
     }
 
-    const updatedUser = await prisma.users.update({
-      where: { id: parseInt(id) },
-      data: {
-        username: username || user.username,
-        email: email || user.email,
-        address: address || user.address,
-        updatedAt: new Date(),
-      },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        address: true,
-        avatar: true
-      },
+    const { updateUser } = require('../lib/users.cjs');
+    const updatedUser = await updateUser({
+      id: parseInt(id),
+      username: username || user.username,
+      email: email || user.email,
+      address: address || user.address,
+      updatedAt: new Date(),
     });
-
     return res.json({
       success: true,
       message: 'User updated successfully',

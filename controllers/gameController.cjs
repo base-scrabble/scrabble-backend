@@ -342,12 +342,16 @@ function __setSettlementIo(mock) {
 }
 
 async function ensureUser(username, address) {
-  const existing = await prisma.users.findFirst({ where: { username } });
-  if (existing) return existing;
-
   const now = new Date();
-  return prisma.users.create({
-    data: {
+  // Use upsert for atomic find-or-create by username
+  return prisma.users.upsert({
+    where: { username },
+    update: {
+      updatedAt: now,
+      isActive: true,
+      address: address || undefined,
+    },
+    create: {
       username,
       email: `${username.toLowerCase()}@example.com`,
       password: 'changeme',
@@ -609,6 +613,15 @@ async function joinGame(req, res) {
 
     const user = await ensureUser(cleanName, playerAddress);
 
+    // Deduplicate socket join events: only allow one join per user per game per socket
+    // Use a simple in-memory map (per-process, not cluster-safe)
+    if (!global.__joinedSockets) global.__joinedSockets = {};
+    const socketId = req?.socket?.id || req?.headers['x-socket-id'] || null;
+    const joinKey = `${socketId || 'no-socket'}:${numericGameId}:${cleanName}`;
+    if (global.__joinedSockets[joinKey]) {
+      return res.status(400).json({ success: false, message: 'Player already joined (socket dedup)' });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const game = await tx.games.findUnique({
         where: { id: numericGameId },
@@ -671,6 +684,9 @@ async function joinGame(req, res) {
     if (result.status !== 200) {
       return res.status(result.status).json(result.body);
     }
+
+    // Mark this socket/user/game as joined
+    global.__joinedSockets[joinKey] = true;
 
     const { game, rack } = result.body;
     const io = getIo(req);

@@ -189,9 +189,12 @@ router.put('/profile', authMiddleware, async (req, res) => {
       }
     }
 
-    await prisma.users.update({
-      where: { id: userId },
-      data: { ...(username && { username }), ...(email && { email }), updatedAt: new Date() },
+    const { updateUser } = require('../lib/users.cjs');
+    await updateUser({
+      id: userId,
+      ...(username && { username }),
+      ...(email && { email }),
+      updatedAt: new Date(),
     });
 
     const updatedUser = await prisma.users.findUnique({
@@ -259,9 +262,11 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     }
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-    await prisma.users.update({
-      where: { id: userId },
-      data: { password: hashedNewPassword, updatedAt: new Date() },
+    const { updateUser } = require('../lib/users.cjs');
+    await updateUser({
+      id: userId,
+      password: hashedNewPassword,
+      updatedAt: new Date(),
     });
 
     res.json({ success: true, message: 'Password changed successfully' });

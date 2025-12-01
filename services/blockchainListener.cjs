@@ -70,9 +70,12 @@ async function handleTournamentConcluded(tournamentId, winnerId, winnerAddress, 
       data: { winnerId: Number(winnerId), status: 'completed', updatedAt: new Date() },
     });
 
-    await prisma.users.update({
-      where: { id: Number(winnerId) },
-      data: { gamesWon: { increment: 1 }, totalScore: { increment: Number(prizeAmount || 0) }, updatedAt: new Date() },
+    const { updateUser } = require('../lib/users.cjs');
+    await updateUser({
+      id: Number(winnerId),
+      gamesWon: { increment: 1 },
+      totalScore: { increment: Number(prizeAmount || 0) },
+      updatedAt: new Date(),
     });
 
     console.log(`🏆 Tournament ${tournamentId} updated`);

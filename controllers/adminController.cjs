@@ -18,9 +18,11 @@ async function banUser(req, res) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    await prisma.users.update({
-      where: { id: parseInt(userId) },
-      data: { isActive: false, updatedAt: new Date() },
+    const { updateUser } = require('../lib/users.cjs');
+    await updateUser({
+      id: parseInt(userId),
+      isActive: false,
+      updatedAt: new Date(),
     });
 
     return res.json({ success: true, message: 'User banned' });
@@ -145,10 +147,10 @@ async function promoteUser(req, res) {
       return res.status(400).json({ success: false, message: 'User ID required' });
     }
 
-    const updatedUser = await prisma.users.update({
-      where: { id: Number(userId) },
-      data: { role: 'admin' },
-      select: { id: true, username: true, role: true },
+    const { updateUser } = require('../lib/users.cjs');
+    const updatedUser = await updateUser({
+      id: Number(userId),
+      role: 'admin',
     });
 
     res.json({ success: true, message: 'User promoted to admin', data: updatedUser });

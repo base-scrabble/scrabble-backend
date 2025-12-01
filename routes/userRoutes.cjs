@@ -34,23 +34,22 @@ router.post("/waitlist", async (req, res) => {
     const code = crypto.randomUUID().slice(0, 8).toUpperCase();
 
     // Create or update user with referral data
-    const existingUser = await prisma.users.findUnique({ where: { email } });
-
+    const { ensureUser, updateUser } = require('../lib/users.cjs');
     let user;
+    const existingUser = await ensureUser({ email });
     if (existingUser) {
-      user = await prisma.users.update({
-        where: { email },
-        data: { referredBy: referralCode || null, inviteCode: code },
+      user = await updateUser({
+        id: existingUser.id,
+        referredBy: referralCode || null,
+        inviteCode: code,
       });
     } else {
-      user = await prisma.users.create({
-        data: {
-          email,
-          inviteCode: code,
-          referredBy: referralCode || null,
-          isActive: true,
-          createdAt: new Date(),
-        },
+      user = await ensureUser({
+        email,
+        inviteCode: code,
+        referredBy: referralCode || null,
+        isActive: true,
+        createdAt: new Date(),
       });
     }
 
