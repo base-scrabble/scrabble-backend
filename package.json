@@ -40,6 +40,7 @@
     "pg": "^8.12.0",
     "pg-hstore": "^2.3.4",
     "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
     "vercel": "^44.7.3"
   },
   "devDependencies": {

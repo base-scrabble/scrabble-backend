@@ -157,35 +157,8 @@ app.use(sanitizeBody);
 // Apply rate limiting (global, then specific endpoint limits)
 app.use(apiLimiter);
 
-// === HEALTH & STATS ===
-app.get('/', (req, res) => {
-  res.json({
-    message: 'Scrabble Backend API',
-    status: 'running',
-    database: 'connected',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
-
-app.get('/api/stats', async (req, res) => {
-  try {
-    const [totalUsers, totalGames, activeGames, completedGames] = await Promise.all([
-      prisma.users.count(),
-      prisma.games.count(),
-      prisma.games.count({ where: { status: 'active' } }),
-      prisma.games.count({ where: { status: 'completed' } }),
-    ]);
-
-    res.json({ success: true, data: { totalUsers, totalGames, activeGames, completedGames } });
-  } catch (err) {
-    logger.error('stats:error', { message: err.message, stack: err.stack });
-    res.status(500).json({ success: false, message: 'Failed to fetch stats', error: err.message });
-  }
-});
+// Register health route
+app.use('/health', require('./routes/health.cjs'));
 
 // === ROUTE MOUNTING ===
 app.use('/api/auth', authLimiter, authRoutes);          // Strict rate limit on auth
