@@ -10,6 +10,7 @@ const { sanitizeBody } = require('./middleware/validation.cjs');
 const { apiLimiter, authLimiter, gameLimiter } = require('./middleware/rateLimiter.cjs');
 
 // === ROUTES ===
+
 const authRoutes = require('./routes/authRoutes.cjs');
 const userRoutes = require('./routes/userRoutes.cjs');
 const wordRoutes = require('./routes/wordRoutes.cjs');
@@ -18,6 +19,7 @@ const gameplayRoutes = require('./routes/gameplayRoutes.cjs');
 const tournamentRoutes = require('./routes/tournamentRoutes.cjs');
 const adminRoutes = require('./routes/adminRoutes.cjs');
 const blockchainRoutes = require('./routes/blockchainRoutes.cjs');
+const waitlistRoutes = require('./routes/waitlistRoutes.cjs');
 const { listGames } = require('./controllers/gameController.cjs');
 
 // === SERVICES ===
@@ -158,9 +160,10 @@ app.use(sanitizeBody);
 app.use(apiLimiter);
 
 // Register health route
-app.use('/health', require('./routes/health.cjs'));
+app.use('/api/health', require('./routes/health.cjs'));
 
 // === ROUTE MOUNTING ===
+
 app.use('/api/auth', authLimiter, authRoutes);          // Strict rate limit on auth
 app.use('/api/users', apiLimiter, userRoutes);
 app.use('/api/words', apiLimiter, wordRoutes);
@@ -169,6 +172,8 @@ app.use('/api/gameplay', gameLimiter, gameplayRoutes);   // ← GAMEPLAY (modera
 app.use('/api/tournaments', apiLimiter, tournamentRoutes);
 app.use('/api/admin', authLimiter, adminRoutes);
 app.use('/api/blockchain', apiLimiter, blockchainRoutes);
+app.use('/api/waitlist', waitlistRoutes);
+console.log('Waitlist routes loaded');
 
 // Legacy lobby endpoint kept for backwards compatibility with older clients
 app.get('/api/lobby/list', gameLimiter, (req, res) => listGames(req, res));

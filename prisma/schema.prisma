@@ -260,9 +260,18 @@ enum enum_tournaments_status {
   cancelled
 }
 
+
 enum enum_tournaments_type {
   single_elimination
   double_elimination
   round_robin
   swiss
+}
+model Waitlist {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  code          String   @unique
+  referrerId    Int?
+  referralCount Int      @default(0)
+  createdAt     DateTime @default(now())
 }
