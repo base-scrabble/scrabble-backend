@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.38.6",
+    "@prisma/adapter-pg": "^7.1.0",
     "@prisma/client": "^7.1.0",
     "axios": "^1.13.1",
     "bcrypt": "^5.1.1",
