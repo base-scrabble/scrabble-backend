@@ -1,0 +1,12 @@
+name: scrabble-backend
+regions:
+  - fra
+env:
+  NODE_ENV: production
+build:
+  builder: nodejs
+  commands:
+    - npm install
+run:
+  app:
+    command: npm start

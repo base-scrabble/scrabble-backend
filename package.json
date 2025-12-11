@@ -2,13 +2,13 @@
   "name": "scrabble-backend",
   "version": "1.0.0",
   "description": "Backend API for Scrabble game",
-  "main": "server.js",
+  "main": "server.cjs",
   "type": "module",
   "engines": {
     "node": "22.x"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "node server.cjs",
     "dev": "node server.cjs",
     "migrate": "npx prisma migrate dev",
     "seed": "node scripts/seed.cjs",
