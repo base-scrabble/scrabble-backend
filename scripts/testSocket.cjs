@@ -1,6 +1,6 @@
 const { io } = require("socket.io-client");
 
-const SOCKET_URL = "http://localhost:8000";
+const SOCKET_URL = "http://localhost:3000";
 
 console.log("🔌 Connecting to socket:", SOCKET_URL);
 

@@ -67,6 +67,7 @@ const allowedOrigins = [
   "https://basescrabble.xyz",
   "https://www.basescrabble.xyz",
   "https://scrabble-frontend.vercel.app",
+  "https://scrabble-frontend-lyart.vercel.app",
 
   // Backend endpoint
   "https://scrabble-backend-production.up.railway.app"

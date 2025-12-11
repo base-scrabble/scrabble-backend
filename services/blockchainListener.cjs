@@ -3,7 +3,7 @@
 // and use safe websocket close detection. Keeps WebSocket + polling fallback.
 
 const { ethers } = require('ethers');
-const prisma = require('../generated/prisma');
+const { prisma } = require('../lib/prisma.cjs');
 
 const CONTRACT_ADDRESS = process.env.SCRABBLE_GAME_ADDRESS;
 const DEFAULT_HTTP_RPC = 'https://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
