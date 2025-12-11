@@ -107,8 +107,24 @@ app.use(
   })
 );
 
-app.options("*", (req, res) => {
-  res.sendStatus(200);
+// Ensure preflight (OPTIONS) includes proper CORS headers
+app.options("*", cors());
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Origin, Content-Type, Authorization, Accept"
+    );
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    );
+  }
+  next();
 });
 // --- END CORS SETUP ---
 
