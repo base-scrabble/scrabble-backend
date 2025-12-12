@@ -5,13 +5,13 @@ const { joinWaitlist, getReferralStats, getReferralCount, getRecentReferralEvent
 // POST /waitlist/join
 router.post('/join', joinWaitlist);
 
-// GET /waitlist/:code
-router.get('/:code', getReferralStats);
+// GET /waitlist/_diagnostics/recent (place before parameterized routes)
+router.get('/_diagnostics/recent', getRecentReferralEvents);
 
 // GET /waitlist/:code/referrals
 router.get('/:code/referrals', getReferralCount);
 
-// GET /waitlist/_diagnostics/recent
-router.get('/_diagnostics/recent', getRecentReferralEvents);
+// GET /waitlist/:code
+router.get('/:code', getReferralStats);
 
 module.exports = router;
