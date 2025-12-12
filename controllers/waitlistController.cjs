@@ -1,5 +1,7 @@
 const { prisma } = require('../lib/prisma.cjs');
 const crypto = require('crypto');
+// In-memory diagnostics buffer for referral increment events
+const recentReferralEvents = [];
 
 function generateReferralCode(length = 7) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -47,12 +49,34 @@ async function joinWaitlist(req, res) {
             referrerId,
             newReferralCount: updated.referralCount,
           });
+          recentReferralEvents.push({
+            ts: new Date().toISOString(),
+            event: 'referral_increment_success',
+            ref,
+            referrerId,
+            newReferralCount: updated.referralCount,
+            joinerEmail: email,
+          });
+          if (recentReferralEvents.length > 200) {
+            recentReferralEvents.splice(0, recentReferralEvents.length - 200);
+          }
         } catch (incErr) {
           console.error('[waitlist] referral increment failed', {
             ref,
             referrerId,
             error: incErr?.message,
           });
+          recentReferralEvents.push({
+            ts: new Date().toISOString(),
+            event: 'referral_increment_failed',
+            ref,
+            referrerId,
+            error: incErr?.message,
+            joinerEmail: email,
+          });
+          if (recentReferralEvents.length > 200) {
+            recentReferralEvents.splice(0, recentReferralEvents.length - 200);
+          }
         }
       }
     }
@@ -107,4 +131,13 @@ async function getReferralCount(req, res) {
   }
 }
 
-module.exports = { joinWaitlist, getReferralStats, getReferralCount };
+// GET /waitlist/_diagnostics/recent
+function getRecentReferralEvents(req, res) {
+  try {
+    return res.json({ success: true, events: recentReferralEvents.slice(-100) });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+}
+
+module.exports = { joinWaitlist, getReferralStats, getReferralCount, getRecentReferralEvents };
