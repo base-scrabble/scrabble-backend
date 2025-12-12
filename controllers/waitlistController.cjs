@@ -21,7 +21,9 @@ async function joinWaitlist(req, res) {
     let referrerId = null;
     if (ref) {
       const referrer = await prisma.Waitlist.findUnique({ where: { code: ref } });
-      if (referrer) referrerId = referrer.id;
+      if (referrer) {
+        referrerId = referrer.id;
+      }
     }
     let waitlist = await prisma.Waitlist.findUnique({ where: { email } });
     if (!waitlist) {
@@ -35,10 +37,23 @@ async function joinWaitlist(req, res) {
         data: { email, code, referrerId },
       });
       if (referrerId) {
-        await prisma.Waitlist.update({
-          where: { id: referrerId },
-          data: { referralCount: { increment: 1 } },
-        });
+        try {
+          const updated = await prisma.Waitlist.update({
+            where: { id: referrerId },
+            data: { referralCount: { increment: 1 } },
+          });
+          console.info('[waitlist] referral increment', {
+            ref,
+            referrerId,
+            newReferralCount: updated.referralCount,
+          });
+        } catch (incErr) {
+          console.error('[waitlist] referral increment failed', {
+            ref,
+            referrerId,
+            error: incErr?.message,
+          });
+        }
       }
     }
     const referralLink = `${req.protocol}://${req.get('host')}/waitlist/join?ref=${waitlist.code}`;
