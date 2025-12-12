@@ -122,6 +122,10 @@ async function getReferralCount(req, res) {
     if (!waitlist) {
       return res.status(404).json({ success: false, message: 'Referral code not found' });
     }
+    // Disable caching so clients see updated counts immediately
+    res.set('Cache-Control', 'no-store');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     return res.json({
       success: true,
       referralCount: waitlist.referralCount,
@@ -134,6 +138,10 @@ async function getReferralCount(req, res) {
 // GET /waitlist/_diagnostics/recent
 function getRecentReferralEvents(req, res) {
   try {
+    // Disable caching for diagnostics
+    res.set('Cache-Control', 'no-store');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     return res.json({ success: true, events: recentReferralEvents.slice(-100) });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Server error', error: err.message });
