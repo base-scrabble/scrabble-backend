@@ -25,7 +25,12 @@ const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  skip: (req) => process.env.NODE_ENV !== 'production', // Disable in dev
+  // Disable in dev, and also skip waitlist endpoints in production to avoid blocking joins/polling
+  skip: (req) => {
+    if (process.env.NODE_ENV !== 'production') return true;
+    const url = req?.originalUrl || '';
+    return url.startsWith('/api/waitlist');
+  },
   keyGenerator: resolveClientIp,
 });
 
