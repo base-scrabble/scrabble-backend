@@ -104,11 +104,13 @@ app.use(
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Origin", "Content-Type", "Authorization", "Accept"],
     credentials: true,
+    optionsSuccessStatus: 204,
   })
 );
 
-// Ensure preflight (OPTIONS) includes proper CORS headers
+// Ensure preflight (OPTIONS) includes proper CORS headers for all routes and /api/* explicitly
 app.options("*", cors());
+app.options("/api/*", cors());
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && isAllowedOrigin(origin)) {
