@@ -69,8 +69,8 @@ const allowedOrigins = [
   "https://scrabble-frontend.vercel.app",
   "https://scrabble-frontend-lyart.vercel.app",
 
-  // Backend endpoint
-  "https://scrabble-backend-production.up.railway.app"
+  // Backend endpoint (Koyeb)
+  "https://leading-deer-base-scrabble-7f7c59ec.koyeb.app"
 ];
 
 // Allow LAN ranges automatically
