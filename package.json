@@ -16,7 +16,7 @@
     "setup": "npm run migrate && npm run seed && npm run seed:admin",
     "build": "npx prisma generate",
     "postinstall": "prisma generate",
-    "test": "vitest"
+    "test": "vitest run"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.38.6",

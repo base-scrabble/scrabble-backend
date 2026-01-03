@@ -90,6 +90,20 @@ Health check:
 
 - http://localhost:3000/api/health
 
+## Tests
+
+Run the backend test suite:
+
+```bash
+npm test
+```
+
+Notes:
+
+- `npm test` runs `vitest run` (non-watch) so it exits cleanly.
+- The settlement smoke test is implemented as a Vitest suite in `tests/settlementSmoke.test.cjs`.
+- Vitest globals are enabled via `vitest.config.js` so the `.cjs` test does not need to import Vitest.
+
 ### Frontend integration note (dev ports)
 
 The frontend Vite dev proxy in `scrabble-frontend/vite.config.js` targets `http://localhost:8000` by default.
