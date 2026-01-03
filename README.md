@@ -1,158 +1,115 @@
-🧩 Based Scrabble Backend
+# Based Scrabble Backend
 
-Backend API powering the Based Scrabble Farcaster Mini App — built on Base Chain, deployed on Render, and integrated with QuickNode RPC and NeonDB (PostgreSQL).
+Backend API + Socket.IO server for the Based Scrabble app at https://basescrabble.xyz.
 
-🚀 Overview
+**Current reality (important):** the live app is **free-to-play + waitlist**. Any “staked/on-chain settlement” plumbing that exists in this repo should be treated as **optional / not enabled by default** unless you explicitly turn it on.
 
-This backend handles:
+## Tech stack
 
-Real-time multiplayer gameplay (Socket.IO)
+- Node.js (see `engines.node` in `package.json`)
+- Express + Socket.IO
+- Prisma + Postgres (Neon in production)
 
-Secure authentication (JWT)
+## Deployments (current)
 
-Word validation with Scrabble dictionary
+- **Frontend:** Vercel
+- **Backend:** Koyeb
+- **Database:** Neon Postgres
 
-Blockchain event syncing (via Ethers + QuickNode RPC)
+## API surface
 
-Automated on-chain result submission (Submitter Service)
+All routes are mounted under `/api` in `server.cjs`.
 
-Tournament scheduling and leaderboard tracking
+- `GET /api/health` — health check
+- `POST /api/waitlist/join` — join waitlist
+- `GET /api/waitlist/:code` — referral stats
+- `GET /api/waitlist/:code/referrals` — referral count
+- `POST /api/gameplay/create`, `POST /api/gameplay/:gameId/join`, ... — gameplay endpoints
+- Socket.IO at `/socket.io`
 
-Owner CMS data feed and analytics
+## Local development
 
-All major logic runs on Node.js + Express + Prisma, with live WebSocket listeners connected to Base Sepolia for development and Base Mainnet for production.
+### Prerequisites
 
-🧠 Core Features
-Category	Description
-⚡ Gameplay	Real-time multiplayer Scrabble engine via Socket.IO
-🔐 Auth	JWT tokens + bcrypt password hashing
-📚 Dictionary	Built-in Scrabble dictionary (off-chain validation)
-🧱 Blockchain	Ethers v6 listener + QuickNode RPC/WSS dual provider
-🪄 Backend Signer	EIP-712 signatures for deposit/join/cancel actions
-🧾 Submitter Service	Automated on-chain submitResult() calls
-⛓️ Event Sync	Listener auto-updates DB on GameFinished/TournamentConcluded
-🧮 Prisma	NeonDB (PostgreSQL) ORM with type-safe queries
-🛠️ Deployment	Render backend + Vercel frontend + QuickNode Base Sepolia RPC
-🪩 Monitoring	Tournament scheduler, reconnect logic, error logging
-🧩 Tech Stack
+- Node.js `22.x`
+- A Postgres database (local Docker, local Postgres, or Neon)
 
-Backend:
-Node.js | Express | Socket.IO | Ethers.js | Prisma | PostgreSQL (NeonDB)
+### 1) Install
 
-Blockchain:
-Base Chain (Sepolia → Mainnet) | QuickNode RPC | EIP-712 Signatures | Backend Signer | Submitter Automation
-
-Deployment:
-Render (backend API + Socket.IO) | Vercel (frontend) | NeonDB (Postgres pooler)
-
-⚙️ Environment Variables (.env)
-# Base config
-PORT=3000
-NODE_ENV=production
-CORS_ORIGIN=https://based-scrabble.vercel.app
-
-# Database (NeonDB)
-DATABASE_URL=postgresql://USER:PASSWORD@ep-restless-dream-ad2gmxrg-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require
-
-# Prisma connection pool tuning
-PGSSLMODE=require
-LISTENER_MAX_RECONNECTS=5
-LISTENER_RECONNECT_DELAY_MS=30000
-
-# Blockchain (Base chain via QuickNode)
-SCRABBLE_GAME_ADDRESS=0xED92f4334f80A8D43d69c10b7cC91B5347901D42
-RPC_URL=https://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/
-RPC_WSS_URL=wss://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/
-
-# Submitter wallet
-SUBMITTER_PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
-SUBMITTER_CHECK_CRON=*/30 * * * * *
-SUBMITTER_MAX_ATTEMPTS=3
-
-# JWT
-JWT_SECRET=super-secret-key
-
-# Admin
-ADMIN_EMAIL=admin@basedscrabble.xyz
-ADMIN_PASSWORD=your-admin-password
-
-🧩 Service Structure
-Service	Purpose
-server.cjs	Main Express + Socket.IO entrypoint
-services/blockchainListener.cjs	WebSocket listener for Base chain events
-services/submitterService.cjs	Cron-based submitter for finalized games
-services/nonceService.cjs	Manages EIP-712 nonces (cached + on-chain)
-services/signatureService.cjs	Generates and verifies EIP-712 signatures
-controllers/*.cjs	REST controllers for auth, gameplay, words, admin
-lib/prisma.cjs	Prisma client instance for DB access
-uploads/	User avatar uploads (storage folder)
-🧮 Safe Prisma Workflow
-
-Once deployed to NeonDB, only use these commands:
-
-npx prisma validate
-npx prisma db pull
-npx prisma generate
-npx prisma studio
-
-
-⚠️ Never run prisma migrate dev or migrate reset on a live DB — it can wipe data.
-
-🧰 Local Development
-# 1. Install dependencies
+```bash
+cd scrabble-backend
 npm install
+```
 
-# 2. Start in dev mode
+### 2) Configure environment
+
+Create a `.env` (or set environment variables in your shell).
+
+Minimum for local dev:
+
+```bash
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
+JWT_SECRET=change-me
+PORT=3000
+```
+
+Optional / only if you explicitly enable blockchain-related background services:
+
+```bash
+# Turn services off explicitly (recommended for local dev)
+ENABLE_BLOCKCHAIN_LISTENER=false
+ENABLE_SUBMITTER=false
+
+# If you enable them, you will also need chain RPC + contract + signer settings.
+RPC_URL=
+RPC_WSS_URL=
+SCRABBLE_GAME_ADDRESS=
+BACKEND_SIGNER_PRIVATE_KEY=
+SUBMITTER_PRIVATE_KEY=
+```
+
+### 3) Database migrations
+
+This repo uses Prisma migrations in `prisma/migrations`.
+
+- Local-only (safe for your own dev DB):
+
+```bash
+npm run migrate
+```
+
+- Shared/staging/prod DBs: prefer `npx prisma migrate deploy` (do not generate new migrations from a prod DB).
+
+### 4) Run the server
+
+```bash
 npm run dev
+```
 
-# 3. Access health check
-http://localhost:3000/api/health
+Health check:
 
+- http://localhost:3000/api/health
 
-If your QuickNode WSS closes, it automatically falls back to HTTP polling and retries every 30 seconds (configurable via LISTENER_RECONNECT_DELAY_MS).
+### Frontend integration note (dev ports)
 
-🔗 Key API Endpoints
-Category	Route	Description
-Health	GET /api/health	Backend + DB status
-Auth	POST /api/auth/register, POST /api/auth/login	User signup / login
-Words	GET /api/words/validate/:word	Word validation
-Games	POST /api/games / GET /api/games/:id	Create / fetch games
-Blockchain	GET /api/blockchain/status	Listener & submitter status
-Admin	GET /api/admin/dashboard	Admin overview
-Tournament	GET /api/tournaments	List active tournaments
-🔐 Blockchain Event Flow
+The frontend Vite dev proxy in `scrabble-frontend/vite.config.js` targets `http://localhost:8000` by default.
 
-Player finishes game → Backend marks status = completed
+You have two options:
 
-Submitter Service → Calls submitResult() on Base chain
+1) Set `PORT=8000` for the backend when running locally, **or**
+2) Update the Vite proxy target to match your backend port.
 
-Scrabble Contract emits GameFinished →
-Blockchain Listener catches event via QuickNode WSS
+## CORS
 
-Listener → Prisma DB: Updates winner, score, and Tx hash
+Allowed origins are enforced via a hardcoded allowlist in `server.cjs` (includes localhost dev ports and the production domain).
 
-Owner CMS / Frontend → Fetches live updates for display
+If you are developing from a new origin (e.g. a different LAN IP/port), you may need to add it to the allowlist.
 
-🧱 Deployment Notes
+## Prisma safety (production)
 
-✅ Backend — Render (works with Socket.IO and long-lived WebSockets)
-⚠️ Frontend — Vercel (limited WebSocket support; use HTTP polling fallback)
-🟢 Database — NeonDB (Postgres with pooler connection string)
-🔵 RPC Provider — QuickNode (Base Sepolia and Base Mainnet)
+- Do **not** run destructive commands (like `migrate reset`) on production.
+- Avoid editing Prisma schema/migrations without explicit approval.
 
-🔒 Security Checklist
+## License
 
-Keep all private keys and RPC URLs in Render/Vercel environment variables
-
-Don’t expose .env in your repo
-
-Rotate keys periodically before mainnet deployment
-
-Use QuickNode rate-limit monitoring for listener health
-
-Regularly check listener and submitter logs on Render dashboard
-
-🧾 License
-
-© 2025 Based Scrabble by noblepeter2000
-Released under the MIT License.
+See the repository license.
