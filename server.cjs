@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const http = require('http');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const crypto = require('crypto');
 const { prisma } = require('./lib/prisma.cjs');
 const { sanitizeBody } = require('./middleware/validation.cjs');
 const { apiLimiter, authLimiter, gameLimiter } = require('./middleware/rateLimiter.cjs');
@@ -42,6 +43,17 @@ memoryDiagnostics.ensureHeapLimit();
 // Render and other proxies set X-Forwarded-* headers; trust first hop so
 // express-rate-limit sees the real client IP instead of throwing errors.
 app.set('trust proxy', 1);
+
+// Request id + minimal diagnostics headers (helps debug intermittent 503s / CORS reports).
+app.use((req, res, next) => {
+  const requestId = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  res.locals.requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  res.setHeader('X-Backend-Time', new Date().toISOString());
+  next();
+});
 
 // --- CLEAN GLOBAL CORS SETUP (REPLACEMENT) ---
 const cors = require('cors');
@@ -156,6 +168,26 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Focused request/response logging for gameplay endpoints.
+app.use('/api/gameplay', (req, res, next) => {
+  const start = Date.now();
+  const origin = req.headers.origin;
+  const ua = req.headers['user-agent'];
+  const requestId = res.locals.requestId;
+  res.on('finish', () => {
+    logger.info('http:gameplay', {
+      requestId,
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - start,
+      origin,
+      ua,
+    });
+  });
+  next();
+});
+
 // Apply security and sanitization middleware
 app.use(sanitizeBody);
 
@@ -164,6 +196,23 @@ app.use(apiLimiter);
 
 // Register health route
 app.use('/api/health', require('./routes/health.cjs'));
+
+// Lightweight diagnostics endpoint (no auth, safe fields only)
+app.get('/api/diag', (req, res) => {
+  res.json({
+    ok: true,
+    requestId: res.locals.requestId,
+    now: new Date().toISOString(),
+    uptimeSec: Math.round(process.uptime()),
+    node: process.version,
+    pid: process.pid,
+    env: {
+      nodeEnv: process.env.NODE_ENV || null,
+      enableBlockchainListener: process.env.ENABLE_BLOCKCHAIN_LISTENER || null,
+      enableSubmitter: process.env.ENABLE_SUBMITTER || null,
+    },
+  });
+});
 
 // === ROUTE MOUNTING ===
 
