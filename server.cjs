@@ -93,41 +93,25 @@ function isAllowedOrigin(origin) {
   return false;
 }
 
-// Global CORS
-app.use(
-  cors({
-    origin: function (origin, cb) {
-      if (!origin) return cb(null, true);
-      if (isAllowedOrigin(origin)) return cb(null, true);
-      return cb(new Error("CORS: Origin Not Allowed"), false);
-    },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Origin", "Content-Type", "Authorization", "Accept"],
-    credentials: true,
-    optionsSuccessStatus: 204,
-  })
-);
+const corsOptions = {
+  origin: function (origin, cb) {
+    // Allow non-browser requests (no Origin header) like health checks.
+    if (!origin) return cb(null, true);
+    if (isAllowedOrigin(origin)) return cb(null, true);
+    // Explicitly block disallowed browser origins.
+    return cb(new Error('CORS: Origin Not Allowed'), false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  optionsSuccessStatus: 204,
+  maxAge: 86400,
+};
 
-// Ensure preflight (OPTIONS) includes proper CORS headers for all routes and /api/* explicitly
-app.options("*", cors());
-app.options("/api/*", cors());
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && isAllowedOrigin(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Vary", "Origin");
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Origin, Content-Type, Authorization, Accept"
-    );
-    res.header(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    );
-  }
-  next();
-});
+// Global CORS (API)
+app.use(cors(corsOptions));
+
+// Ensure preflight (OPTIONS) uses the same CORS rules.
+app.options('*', cors(corsOptions));
 // --- END CORS SETUP ---
 
 const io = new Server(server, {
