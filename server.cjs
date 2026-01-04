@@ -35,6 +35,12 @@ const { gameRoom, playerRoom } = require('./lib/rooms.cjs');
 const app = express();
 const server = http.createServer(app);
 
+// Proxy-friendly server timeouts.
+// Some edge proxies expect keep-alive connections to remain open > 5s; mismatches can
+// show up client-side as ERR_EMPTY_RESPONSE and upstream 5xx.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+
 // Increase the V8 heap ceiling slightly so Render has enough headroom to
 // capture diagnostics before the process restarts. This is temporary until we
 // fully resolve the memory regression.

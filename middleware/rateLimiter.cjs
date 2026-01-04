@@ -29,7 +29,11 @@ const apiLimiter = rateLimit({
   skip: (req) => {
     if (process.env.NODE_ENV !== 'production') return true;
     const url = req?.originalUrl || '';
-    return url.startsWith('/api/waitlist');
+    return (
+      url.startsWith('/api/health') ||
+      url.startsWith('/api/diag') ||
+      url.startsWith('/api/waitlist')
+    );
   },
   keyGenerator: resolveClientIp,
 });
@@ -54,7 +58,9 @@ const authLimiter = rateLimit({
  */
 const gameLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  // Must allow periodic gameplay polling and Socket.IO fallback patterns.
+  // 600 / 15 min ~= 40 req/min (~0.67 req/s) per client.
+  max: 600,
   message: 'Too many game requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
