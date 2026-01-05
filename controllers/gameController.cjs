@@ -343,24 +343,86 @@ function __setSettlementIo(mock) {
 
 async function ensureUser(username, address) {
   const now = new Date();
-  // Use upsert for atomic find-or-create by username
-  return prisma.users.upsert({
-    where: { username },
-    update: {
-      updatedAt: now,
-      isActive: true,
-      address: address || undefined,
-    },
-    create: {
-      username,
-      email: `${username.toLowerCase()}@example.com`,
-      password: 'changeme',
-      address: address || null,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
+  const requestedUsername = (username || '').trim();
+  if (!requestedUsername) {
+    throw new Error('Username required');
+  }
+
+  // We treat usernames as case-insensitive for identity purposes.
+  // This avoids creating duplicate users like "Peter" vs "peter" and prevents
+  // unique email collisions (email is @unique in the schema).
+  const existing = await prisma.users.findFirst({
+    where: {
+      username: {
+        equals: requestedUsername,
+        mode: 'insensitive',
+      },
     },
   });
+
+  if (existing) {
+    try {
+      return await prisma.users.update({
+        where: { id: existing.id },
+        data: {
+          updatedAt: now,
+          isActive: true,
+          address: address || undefined,
+        },
+      });
+    } catch (err) {
+      // If the provided address is already bound to another user, keep the user record
+      // but skip setting address rather than failing gameplay creation.
+      if (err?.code === 'P2002') {
+        return await prisma.users.update({
+          where: { id: existing.id },
+          data: {
+            updatedAt: now,
+            isActive: true,
+          },
+        });
+      }
+      throw err;
+    }
+  }
+
+  // Create a new user with a guaranteed-unique placeholder email.
+  // We don't rely on email for gameplay auth.
+  const suffix = Math.random().toString(16).slice(2, 10);
+  const baseLocal = requestedUsername
+    .toLowerCase()
+    .replace(/\s+/g, '.')
+    .replace(/[^a-z0-9._+-]/g, '')
+    .slice(0, 40) || 'player';
+  const email = `${baseLocal}+${suffix}@example.com`;
+
+  try {
+    return await prisma.users.create({
+      data: {
+        username: requestedUsername,
+        email,
+        password: 'changeme',
+        address: address || null,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  } catch (err) {
+    // If something raced to create the same (case-insensitive) user, refetch.
+    if (err?.code === 'P2002') {
+      const raced = await prisma.users.findFirst({
+        where: {
+          username: {
+            equals: requestedUsername,
+            mode: 'insensitive',
+          },
+        },
+      });
+      if (raced) return raced;
+    }
+    throw err;
+  }
 }
 
 function nextPlayerNumber(players = []) {
@@ -552,7 +614,8 @@ async function createGame(req, res) {
       return res.status(400).json({ success: false, message: 'Player name required' });
     }
 
-    logger.info('game:create:start', { playerName: cleanName });
+    const requestId = res?.locals?.requestId;
+    logger.info('game:create:start', { requestId, playerName: cleanName });
     const user = await ensureUser(cleanName, playerAddress);
     const boardState = hydrateBoardState();
     const filled = fillRack(boardState);
@@ -590,11 +653,22 @@ async function createGame(req, res) {
       include: baseGameInclude,
     });
 
-    logger.info('game:create:success', { gameId: game.id, gameCode });
+    logger.info('game:create:success', { requestId, gameId: game.id, gameCode });
     return respondWithGame(res, game, rack, { status: 201 });
   } catch (err) {
-    logger.error('game:create:error', { message: err.message, stack: err.stack });
-    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+    logger.error('game:create:error', {
+      requestId: res?.locals?.requestId,
+      message: err.message,
+      code: err.code,
+      stack: err.stack,
+    });
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      requestId: res?.locals?.requestId,
+      code: err?.code || null,
+      error: err?.message || 'unknown',
+    });
   }
 }
 
@@ -696,7 +770,12 @@ async function joinGame(req, res) {
     logger.info('game:join:success', { gameId: game.id, playerName: cleanName });
     return respondWithGame(res, game, rack);
   } catch (err) {
-    logger.error('game:join:error', { message: err.message, stack: err.stack });
+    logger.error('game:join:error', {
+      requestId: res?.locals?.requestId,
+      message: err.message,
+      code: err.code,
+      stack: err.stack,
+    });
     return res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 }

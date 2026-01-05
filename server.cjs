@@ -304,8 +304,22 @@ io.on('connection', (socket) => {
 
 // === ERROR HANDLING ===
 app.use((err, req, res, next) => {
-  logger.error('express:unhandled', { message: err?.message, stack: err?.stack });
-  res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  const requestId = res?.locals?.requestId;
+  logger.error('express:unhandled', {
+    requestId,
+    method: req?.method,
+    path: req?.originalUrl,
+    origin: req?.headers?.origin,
+    message: err?.message,
+    stack: err?.stack,
+  });
+  if (res.headersSent) return next(err);
+  res.status(500).json({
+    success: false,
+    message: 'Server error',
+    requestId,
+    error: err?.message || 'unknown',
+  });
 });
 
 app.use('*', (req, res) => {
