@@ -32,6 +32,47 @@ const memoryDiagnostics = require('./lib/memoryDiagnostics.cjs');
 
 const { gameRoom, playerRoom } = require('./lib/rooms.cjs');
 
+// Capture fatal and async errors for production forensics.
+let lastFatalError = null;
+process.on('uncaughtException', (err) => {
+  try {
+    lastFatalError = {
+      type: 'uncaughtException',
+      at: new Date().toISOString(),
+      message: err?.message || String(err),
+      stack: err?.stack || null,
+      name: err?.name || null,
+    };
+    logger.error('process:uncaught-exception', {
+      message: err?.message,
+      stack: err?.stack,
+      name: err?.name,
+    });
+  } catch (_) {
+    // no-op
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  try {
+    const message = typeof reason === 'object' && reason && 'message' in reason
+      ? reason.message
+      : String(reason);
+    const stack = typeof reason === 'object' && reason && 'stack' in reason
+      ? reason.stack
+      : null;
+    lastFatalError = {
+      type: 'unhandledRejection',
+      at: new Date().toISOString(),
+      message,
+      stack,
+    };
+    logger.error('process:unhandled-rejection', { message, stack });
+  } catch (_) {
+    // no-op
+  }
+});
+
 const app = express();
 const server = http.createServer(app);
 
@@ -205,6 +246,7 @@ app.use('/api/health', require('./routes/health.cjs'));
 
 // Lightweight diagnostics endpoint (no auth, safe fields only)
 app.get('/api/diag', (req, res) => {
+  const mem = process.memoryUsage();
   res.json({
     ok: true,
     requestId: res.locals.requestId,
@@ -212,6 +254,14 @@ app.get('/api/diag', (req, res) => {
     uptimeSec: Math.round(process.uptime()),
     node: process.version,
     pid: process.pid,
+    memory: {
+      rssMb: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
+      heapUsedMb: Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
+      heapTotalMb: Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100,
+      externalMb: Math.round((mem.external / 1024 / 1024) * 100) / 100,
+      arrayBuffersMb: Math.round(((mem.arrayBuffers || 0) / 1024 / 1024) * 100) / 100,
+    },
+    lastFatalError,
     env: {
       nodeEnv: process.env.NODE_ENV || null,
       enableBlockchainListener: process.env.ENABLE_BLOCKCHAIN_LISTENER || null,
