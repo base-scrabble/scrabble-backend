@@ -16,6 +16,7 @@ let contract = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECTS = Number(process.env.LISTENER_MAX_RECONNECTS || 5);
 const RECONNECT_DELAY_MS = Number(process.env.LISTENER_RECONNECT_DELAY_MS || 30000);
+let reconnectTimer = null;
 
 const ABI = [
   'event GameFinished(uint256 indexed gameId, uint256 winnerId, address winnerAddress, uint256 finalScore)',
@@ -31,9 +32,38 @@ function buildProvider() {
   return new ethers.JsonRpcProvider(RPC_URL);
 }
 
+function getProviderWebSocket(p) {
+  return p?.websocket || p?._websocket || p?._ws || null;
+}
+
+function attachWebSocketHandlers(p) {
+  const ws = getProviderWebSocket(p);
+  if (!ws || typeof ws.on !== 'function') return;
+
+  // If the underlying socket errors and nobody is listening, Node can surface it as an uncaughtException.
+  ws.on('error', (err) => {
+    console.warn('⚠️ WebSocket error:', err?.message || err);
+    try {
+      ws.terminate?.();
+    } catch (_) {}
+    scheduleReconnect();
+  });
+
+  ws.on('close', (code, reason) => {
+    console.warn('⚠️ WebSocket closed:', code, reason);
+    scheduleReconnect();
+  });
+}
+
 async function initContract() {
   try {
     provider = buildProvider();
+
+    // Attach WS handlers immediately after provider creation to prevent early TLS/WebSocket errors
+    // from taking down the whole Node process.
+    if (provider instanceof ethers.WebSocketProvider) {
+      attachWebSocketHandlers(provider);
+    }
 
     contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
     console.log(`✅ Connected to contract at ${CONTRACT_ADDRESS}`);
@@ -121,17 +151,13 @@ async function startListening() {
       registerShutdownHandler();
     }
 
-    // [REMOVED] provider.on('close', ...) — invalid in ethers v6
-    // ✅ WebSocket close detection (safe)
-    const ws = provider?.websocket || provider?._websocket || provider?._ws;
-    if (ws && typeof ws.on === 'function') {
-      ws.on('close', (code, reason) => {
-        console.warn('⚠️ WebSocket closed:', code, reason);
-        scheduleReconnect();
-      });
-    }
+    // For WS providers, we already attach close/error handlers in initContract.
 
     reconnectAttempts = 0;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     console.log('✅ Blockchain listener active and watching events');
   } catch (err) {
     console.error('Listener startup failed:', err.message || err);
@@ -144,10 +170,15 @@ function scheduleReconnect() {
     console.error('Max reconnect attempts reached. Listener stopped.');
     return;
   }
+
+  // Avoid scheduling multiple overlapping reconnects.
+  if (reconnectTimer) return;
+
   reconnectAttempts++;
   const delay = RECONNECT_DELAY_MS * reconnectAttempts;
   console.log(`Reconnect attempt ${reconnectAttempts} scheduled in ${delay / 1000}s`);
-  setTimeout(async () => {
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
     await startListening();
   }, delay);
 }
