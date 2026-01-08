@@ -66,6 +66,21 @@ const gameLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV !== 'production',
   keyGenerator: resolveClientIp,
+  handler: (req, res, next, options) => {
+    try {
+      // Avoid importing logger here; keep this middleware standalone.
+      console.warn('[rate-limit] gameLimiter blocked request', {
+        ip: resolveClientIp(req),
+        method: req?.method,
+        path: req?.originalUrl,
+        requestId: res?.locals?.requestId,
+        message: options?.message,
+      });
+    } catch (_) {
+      // no-op
+    }
+    res.status(options.statusCode).send(options.message);
+  },
 });
 
 module.exports = {

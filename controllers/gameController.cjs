@@ -966,16 +966,49 @@ async function getGameState(req, res) {
 
 async function makeMove(req, res) {
   try {
+    const requestId = res?.locals?.requestId;
+    const clientRequestId = req?.headers?.['x-client-request-id'] || null;
     const numericGameId = parseInt(req.params.gameId, 10);
     if (Number.isNaN(numericGameId)) {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: req?.params?.gameId,
+        reason: 'invalid-game-id',
+      });
       return res.status(400).json({ success: false, message: 'Invalid game id' });
     }
 
     const { playerName, placements, exchanged, passed } = req.body || {};
     const cleanName = normalizeName(playerName);
     if (!cleanName) {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        reason: 'missing-player-name',
+      });
       return res.status(400).json({ success: false, message: 'Player name required' });
     }
+
+    const moveKind = Array.isArray(placements) && placements.length
+      ? 'placement'
+      : Array.isArray(exchanged) && exchanged.length
+        ? 'exchange'
+        : passed
+          ? 'pass'
+          : 'unknown';
+
+    logger.info('game:move:recv', {
+      requestId,
+      clientRequestId,
+      gameId: numericGameId,
+      playerName: cleanName,
+      kind: moveKind,
+      placementsCount: Array.isArray(placements) ? placements.length : 0,
+      exchangedCount: Array.isArray(exchanged) ? exchanged.length : 0,
+      passed: Boolean(passed),
+    });
 
     const actions = [
       Array.isArray(placements) && placements.length > 0,
@@ -983,9 +1016,23 @@ async function makeMove(req, res) {
       Boolean(passed),
     ].filter(Boolean);
     if (!actions.length) {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        reason: 'no-move-supplied',
+      });
       return res.status(400).json({ success: false, message: 'No move supplied' });
     }
     if (actions.length > 1) {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        reason: 'multiple-actions',
+      });
       return res.status(400).json({ success: false, message: 'Only one move action allowed' });
     }
 
@@ -994,20 +1041,58 @@ async function makeMove(req, res) {
       include: baseGameInclude,
     });
     if (!game) {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        reason: 'game-not-found',
+      });
       return res.status(404).json({ success: false, message: 'Game not found' });
     }
     if (game.status !== 'active') {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        status: game.status,
+        reason: 'game-not-active',
+      });
       return res.status(400).json({ success: false, message: 'Game not active' });
     }
 
     const player = findPlayerByName(game, cleanName);
     if (!player) {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        reason: 'player-not-found',
+      });
       return res.status(404).json({ success: false, message: 'Player not found' });
     }
     if (player.isActive === false) {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        reason: 'player-inactive',
+      });
       return res.status(400).json({ success: false, message: 'Player inactive' });
     }
     if (game.currentTurn && game.currentTurn !== player.playerNumber) {
+      logger.info('game:move:reject', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        currentTurn: game.currentTurn,
+        playerNumber: player.playerNumber,
+        reason: 'not-your-turn',
+      });
       return res.status(409).json({ success: false, message: 'Not your turn' });
     }
 
@@ -1020,10 +1105,26 @@ async function makeMove(req, res) {
     if (Array.isArray(placements) && placements.length) {
       const moveAnalysis = analyzeMove(boardState, placements);
       if (!moveAnalysis.ok) {
+        logger.info('game:move:reject', {
+          requestId,
+          clientRequestId,
+          gameId: numericGameId,
+          playerName: cleanName,
+          reason: 'invalid-placement',
+          detail: moveAnalysis.reason,
+        });
         return res.status(400).json({ success: false, message: `Invalid placement: ${moveAnalysis.reason}` });
       }
       for (const wordData of moveAnalysis.words || []) {
         if (isValidWord && !isValidWord(wordData.word)) {
+          logger.info('game:move:reject', {
+            requestId,
+            clientRequestId,
+            gameId: numericGameId,
+            playerName: cleanName,
+            reason: 'invalid-word',
+            word: wordData.word,
+          });
           return res.status(400).json({ success: false, message: `Invalid word: ${wordData.word}` });
         }
       }
@@ -1031,6 +1132,13 @@ async function makeMove(req, res) {
       const letters = placements.map((p) => p.rackLetter || p.letter);
       const removal = removeLettersFromRack(rack, letters);
       if (!removal.ok) {
+        logger.info('game:move:reject', {
+          requestId,
+          clientRequestId,
+          gameId: numericGameId,
+          playerName: cleanName,
+          reason: 'tiles-not-in-rack',
+        });
         return res.status(400).json({ success: false, message: 'Tiles not in rack' });
       }
       rack = removal.remaining;
@@ -1078,10 +1186,26 @@ async function makeMove(req, res) {
       );
     } else if (Array.isArray(exchanged) && exchanged.length) {
       if (boardState.bag.length < exchanged.length) {
+        logger.info('game:move:reject', {
+          requestId,
+          clientRequestId,
+          gameId: numericGameId,
+          playerName: cleanName,
+          reason: 'insufficient-bag-tiles',
+          bagCount: boardState.bag.length,
+          exchangeCount: exchanged.length,
+        });
         return res.status(400).json({ success: false, message: 'Not enough tiles in bag to exchange' });
       }
       const removal = removeLettersFromRack(rack, exchanged);
       if (!removal.ok) {
+        logger.info('game:move:reject', {
+          requestId,
+          clientRequestId,
+          gameId: numericGameId,
+          playerName: cleanName,
+          reason: 'tiles-not-in-rack',
+        });
         return res.status(400).json({ success: false, message: 'Tiles not in rack' });
       }
       rack = removal.remaining;
@@ -1148,11 +1272,35 @@ async function makeMove(req, res) {
 
     const io = getIo(req);
     if (winnerPayload) {
+      logger.info('game:move:broadcast', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        event: 'game:over',
+        completionReason: reason,
+      });
       emitGameState(io, updatedGame, 'game:over', { winner: winnerPayload });
       await triggerSettlementIfEligible(updatedGame);
     } else {
+      logger.info('game:move:broadcast', {
+        requestId,
+        clientRequestId,
+        gameId: numericGameId,
+        playerName: cleanName,
+        event: 'game:update',
+      });
       emitGameState(io, updatedGame, 'game:update');
     }
+
+    logger.info('game:move:respond', {
+      requestId,
+      clientRequestId,
+      gameId: numericGameId,
+      playerName: cleanName,
+      status: updatedGame?.status,
+      winner: Boolean(winnerPayload),
+    });
 
     return respondWithGame(res, updatedGame, rack, {
       winner: winnerPayload,
