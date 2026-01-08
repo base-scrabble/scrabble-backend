@@ -238,8 +238,9 @@ app.use('/api/gameplay', (req, res, next) => {
 // Apply security and sanitization middleware
 app.use(sanitizeBody);
 
-// Apply rate limiting (global, then specific endpoint limits)
-app.use(apiLimiter);
+// Rate limiting is applied per-route below.
+// NOTE: Do not apply `apiLimiter` globally, otherwise gameplay endpoints can be
+// throttled under normal reconnect/resync patterns, making moves appear flaky.
 
 // Register health route
 app.use('/api/health', require('./routes/health.cjs'));
