@@ -21,6 +21,46 @@ function newRequestId() {
   return `e2e-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isKoyebDeployHtml(text) {
+  if (!text) return false;
+  return (
+    text.includes('Your service is almost ready!') ||
+    text.includes('We are deploying your application')
+  );
+}
+
+function snippet(text, max = 240) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+async function withTransientRetry(fn, { label = 'request', timeoutMs = 120_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    attempt += 1;
+    try {
+      return await fn();
+    } catch (err) {
+      const transient = Boolean(err?.transient);
+      const expired = Date.now() >= deadline;
+      if (!transient || expired) throw err;
+
+      const delayMs = Math.min(1000 * attempt, 5_000);
+      console.log(`${label}: transient failure, retrying in ${delayMs}ms (attempt ${attempt})`);
+      await sleep(delayMs);
+    }
+  }
+}
+
 async function readResponse(res) {
   const text = await res.text();
   let json = null;
@@ -40,6 +80,12 @@ async function httpGet(url) {
     },
   });
   const { text, json } = await readResponse(res);
+  if (isKoyebDeployHtml(text)) {
+    const err = new Error(`Koyeb is still deploying (GET ${url}, status ${res.status}).`);
+    err.transient = true;
+    err.bodySnippet = snippet(text);
+    throw err;
+  }
   return { res, text, json };
 }
 
@@ -53,7 +99,49 @@ async function httpPost(url, body) {
     body: JSON.stringify(body || {}),
   });
   const { text, json } = await readResponse(res);
+  if (isKoyebDeployHtml(text)) {
+    const err = new Error(`Koyeb is still deploying (POST ${url}, status ${res.status}).`);
+    err.transient = true;
+    err.bodySnippet = snippet(text);
+    throw err;
+  }
   return { res, text, json };
+}
+
+async function waitForHealthy(base, { timeoutMs = 300_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+  let lastStatus = null;
+  let lastSnippet = null;
+
+  while (Date.now() < deadline) {
+    attempt += 1;
+    try {
+      const { res, text, json } = await httpGet(`${base}/health`);
+      lastStatus = res.status;
+      lastSnippet = snippet(text);
+
+      // Treat "ok + JSON" as ready. (Koyeb deploy page is handled in httpGet.)
+      if (res.ok && json) {
+        console.log(`health: ${res.status}`);
+        return { res, text, json };
+      }
+
+      console.log(`health: ${res.status} (waiting for JSON...)`);
+    } catch (err) {
+      if (!err?.transient) throw err;
+      lastStatus = lastStatus ?? 'unknown';
+      lastSnippet = err?.bodySnippet ?? lastSnippet;
+      console.log(`health: not ready yet (attempt ${attempt})`);
+    }
+
+    const delayMs = Math.min(1500 * attempt, 10_000);
+    await sleep(delayMs);
+  }
+
+  throw new Error(
+    `Timed out waiting for prod service readiness at ${base}/health. LastStatus=${lastStatus} LastBody=${lastSnippet}`,
+  );
 }
 
 function pickGameId(payload) {
@@ -197,15 +285,14 @@ async function main() {
 
   console.log(`[${nowStamp()}] E2E base = ${base}`);
 
-  // 0) Health
-  {
-    const { res, text } = await httpGet(`${base}/health`);
-    console.log(`health: ${res.status}`);
-    if (!res.ok) throw new Error(`health failed ${res.status}: ${text}`);
-  }
+  // 0) Health (Koyeb can temporarily serve HTML during deploy; wait a bit.)
+  await waitForHealthy(base);
 
   // 1) Create
-  const created = await httpPost(`${base}/gameplay/create`, { playerName: p1, playerAddress: null });
+  const created = await withTransientRetry(
+    () => httpPost(`${base}/gameplay/create`, { playerName: p1, playerAddress: null }),
+    { label: 'create', timeoutMs: 120_000 },
+  );
   console.log(`create: ${created.res.status}`);
   if (!created.res.ok) throw new Error(`create failed ${created.res.status}: ${created.text}`);
 
@@ -221,15 +308,22 @@ async function main() {
   console.log(`Initial rack (${rack.length}): ${rack.join('')}`);
 
   // 2) Join p2
-  const joined = await httpPost(`${base}/gameplay/${encodeURIComponent(gameId)}/join`, {
-    playerName: p2,
-    playerAddress: null,
-  });
+  const joined = await withTransientRetry(
+    () =>
+      httpPost(`${base}/gameplay/${encodeURIComponent(gameId)}/join`, {
+        playerName: p2,
+        playerAddress: null,
+      }),
+    { label: 'join', timeoutMs: 120_000 },
+  );
   console.log(`join: ${joined.res.status}`);
   if (!joined.res.ok) throw new Error(`join failed ${joined.res.status}: ${joined.text}`);
 
   // 3) Start
-  const started = await httpPost(`${base}/gameplay/${encodeURIComponent(gameId)}/start`, {});
+  const started = await withTransientRetry(
+    () => httpPost(`${base}/gameplay/${encodeURIComponent(gameId)}/start`, {}),
+    { label: 'start', timeoutMs: 120_000 },
+  );
   console.log(`start: ${started.res.status}`);
   if (!started.res.ok) throw new Error(`start failed ${started.res.status}: ${started.text}`);
 
@@ -240,10 +334,14 @@ async function main() {
   }
   const placements = buildPlacementsForWord(chosenWord, rack);
   console.log(`Submitting word: ${chosenWord} placements=${placements.length}`);
-  const placed = await httpPost(`${base}/gameplay/${encodeURIComponent(gameId)}/move`, {
-    playerName: p1,
-    placements,
-  });
+  const placed = await withTransientRetry(
+    () =>
+      httpPost(`${base}/gameplay/${encodeURIComponent(gameId)}/move`, {
+        playerName: p1,
+        placements,
+      }),
+    { label: 'move(place)', timeoutMs: 300_000 },
+  );
   console.log(`move(place): ${placed.res.status}`);
   if (!placed.res.ok) throw new Error(`move(place) failed ${placed.res.status}: ${placed.text}`);
   const afterPlaceStatus = placed.json?.data?.gameState?.status;
@@ -253,9 +351,13 @@ async function main() {
   // 5) Alternate pass turns until completed (ensures endgame + submit path stays healthy)
   let currentPlayer = p2;
   for (let i = 1; i <= 10; i += 1) {
-    const move = await httpPost(`${base}/gameplay/${encodeURIComponent(gameId)}/skip`, {
-      playerName: currentPlayer,
-    });
+    const move = await withTransientRetry(
+      () =>
+        httpPost(`${base}/gameplay/${encodeURIComponent(gameId)}/skip`, {
+          playerName: currentPlayer,
+        }),
+      { label: `skip(turn ${i})`, timeoutMs: 120_000 },
+    );
 
     if (!move.res.ok) {
       throw new Error(
@@ -280,8 +382,9 @@ async function main() {
   }
 
   // 6) Final state
-  const finalState = await httpGet(
-    `${base}/gameplay/${encodeURIComponent(gameId)}?playerName=${encodeURIComponent(p1)}`,
+  const finalState = await withTransientRetry(
+    () => httpGet(`${base}/gameplay/${encodeURIComponent(gameId)}?playerName=${encodeURIComponent(p1)}`),
+    { label: 'final getState', timeoutMs: 120_000 },
   );
   console.log(`final getState: ${finalState.res.status}`);
   console.log(finalState.text.slice(0, 700));
