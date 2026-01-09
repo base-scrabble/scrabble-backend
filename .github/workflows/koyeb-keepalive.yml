@@ -24,11 +24,15 @@ jobs:
           for path in "/api/health" "/api/diag"; do
             url="${BASE_URL}${path}"
             echo "Pinging ${url}"
-            curl -fsS -m 10 \
+            # Don't use -f: even a 503/HTML response still warms the instance.
+            # Do retry on transient network/timeouts.
+            curl -sS -m 30 \
+              --retry 3 \
+              --retry-all-errors \
+              --retry-delay 3 \
               -H "Cache-Control: no-cache" \
               -H "X-Client-Request-Id: keepalive-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
               "${url}" \
-              | head -c 500 \
-              || true
+              | head -c 500
             echo ""
           done
