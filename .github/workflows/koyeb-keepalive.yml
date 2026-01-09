@@ -1,0 +1,34 @@
+name: Koyeb Keepalive
+
+on:
+  schedule:
+    # GitHub scheduled workflows run at best-effort granularity (typically >= 5 minutes)
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: koyeb-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping backend health/diag
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="https://leading-deer-base-scrabble-7f7c59ec.koyeb.app"
+
+          for path in "/api/health" "/api/diag"; do
+            url="${BASE_URL}${path}"
+            echo "Pinging ${url}"
+            curl -fsS -m 10 \
+              -H "Cache-Control: no-cache" \
+              -H "X-Client-Request-Id: keepalive-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              "${url}" \
+              | head -c 500 \
+              || true
+            echo ""
+          done
