@@ -40,6 +40,25 @@ function snippet(text, max = 240) {
     .slice(0, max);
 }
 
+function transientError(message, extra = {}) {
+  const err = new Error(message);
+  err.transient = true;
+  Object.assign(err, extra);
+  return err;
+}
+
+async function safeFetch(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (e) {
+    const code = e?.cause?.code || e?.code || null;
+    throw transientError(`Network fetch failed (${options?.method || 'GET'} ${url})`, {
+      cause: e,
+      code,
+    });
+  }
+}
+
 async function withTransientRetry(fn, { label = 'request', timeoutMs = 120_000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let attempt = 0;
@@ -73,7 +92,7 @@ async function readResponse(res) {
 }
 
 async function httpGet(url) {
-  const res = await fetch(url, {
+  const res = await safeFetch(url, {
     headers: {
       'cache-control': 'no-cache',
       'x-client-request-id': newRequestId(),
@@ -81,16 +100,15 @@ async function httpGet(url) {
   });
   const { text, json } = await readResponse(res);
   if (isKoyebDeployHtml(text)) {
-    const err = new Error(`Koyeb is still deploying (GET ${url}, status ${res.status}).`);
-    err.transient = true;
-    err.bodySnippet = snippet(text);
-    throw err;
+    throw transientError(`Koyeb is still deploying (GET ${url}, status ${res.status}).`, {
+      bodySnippet: snippet(text),
+    });
   }
   return { res, text, json };
 }
 
 async function httpPost(url, body) {
-  const res = await fetch(url, {
+  const res = await safeFetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -100,10 +118,9 @@ async function httpPost(url, body) {
   });
   const { text, json } = await readResponse(res);
   if (isKoyebDeployHtml(text)) {
-    const err = new Error(`Koyeb is still deploying (POST ${url}, status ${res.status}).`);
-    err.transient = true;
-    err.bodySnippet = snippet(text);
-    throw err;
+    throw transientError(`Koyeb is still deploying (POST ${url}, status ${res.status}).`, {
+      bodySnippet: snippet(text),
+    });
   }
   return { res, text, json };
 }
