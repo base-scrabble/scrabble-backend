@@ -1,82 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 
-class TrieNode {
-  constructor() {
-    this.children = Object.create(null);
-    this.isWord = false;
-  }
-}
-
-class Trie {
-  constructor() {
-    this.root = new TrieNode();
-  }
-
-  add(word = '') {
-    if (!word) return;
-    let node = this.root;
-    for (const char of word) {
-      if (!node.children[char]) {
-        node.children[char] = new TrieNode();
-      }
-      node = node.children[char];
-    }
-    node.isWord = true;
-  }
-
-  has(word = '') {
-    if (!word) return false;
-    let node = this.root;
-    for (const char of word) {
-      node = node.children[char];
-      if (!node) return false;
-    }
-    return Boolean(node && node.isWord);
-  }
-}
-
-class BloomFilter {
-  constructor(size = 131072) {
-    this.size = Math.max(2048, size);
-    this.bits = new Uint8Array(Math.ceil(this.size / 8));
-  }
-
-  _hash(word, seed) {
-    let hash = seed;
-    for (let i = 0; i < word.length; i += 1) {
-      hash ^= (hash << 5) + (hash >> 2) + word.charCodeAt(i);
-    }
-    return Math.abs(hash) >>> 0;
-  }
-
-  _indexes(word) {
-    const h1 = this._hash(word, 0x9e3779b9);
-    const h2 = this._hash(word, 0x85ebca6b);
-    return [
-      h1 % this.size,
-      (h1 + h2) % this.size,
-      (h1 + (h2 << 1)) % this.size,
-    ];
-  }
-
-  add(word) {
-    this._indexes(word).forEach((idx) => {
-      const byteIndex = Math.floor(idx / 8);
-      const bitIndex = idx % 8;
-      this.bits[byteIndex] |= (1 << bitIndex);
-    });
-  }
-
-  mightContain(word) {
-    return this._indexes(word).every((idx) => {
-      const byteIndex = Math.floor(idx / 8);
-      const bitIndex = idx % 8;
-      return (this.bits[byteIndex] & (1 << bitIndex)) !== 0;
-    });
-  }
-}
-
 const BUILT_IN_WORDS = [
   'AA', 'AB', 'AD', 'AE', 'AG', 'AH', 'AI', 'AL', 'AM', 'AN', 'AR', 'AS', 'AT', 'AW', 'AX', 'AY',
   'BA', 'BE', 'BI', 'BO', 'BY', 'DA', 'DE', 'DO', 'ED', 'EF', 'EH', 'EL', 'EM', 'EN', 'ER', 'ES',
@@ -87,11 +11,8 @@ const BUILT_IN_WORDS = [
   'WO', 'XI', 'XU', 'YA', 'YE', 'YO', 'ZA',
 ];
 
-let trie = new Trie();
-let bloom = null;
 let dictionaryLoaded = false;
 let dictionaryStats = { totalWords: 0, loadedFrom: 'embedded', createdAt: null };
-let dictionaryWords = [];
 let dictionarySet = new Set();
 
 function normalizeWord(word = '') {
@@ -129,16 +50,10 @@ function loadWordlist() {
     words = BUILT_IN_WORDS.map(normalizeWord);
   }
 
-  trie = new Trie();
-  bloom = new BloomFilter(words.length * 12);
-  dictionarySet = new Set();
-  words.forEach((word) => {
-    trie.add(word);
-    bloom.add(word);
-    dictionarySet.add(word);
-  });
-
-  dictionaryWords = words;
+  // IMPORTANT: Avoid building large in-memory tries/DAWGs in production.
+  // Fly shared-cpu 512mb VMs can easily OOM when constructing per-character
+  // node graphs. A Set lookup is fast enough and far more memory efficient.
+  dictionarySet = new Set(words);
   dictionaryLoaded = true;
   dictionaryStats = {
     totalWords: words.length,
@@ -161,11 +76,7 @@ function isValidWord(word) {
   if (!normalized) return false;
   ensureDictionary();
   if (normalized.length > 15) return false;
-  if (dictionarySet && dictionarySet.size && dictionarySet.has(normalized)) {
-    return true;
-  }
-  if (bloom && !bloom.mightContain(normalized)) return false;
-  return trie.has(normalized);
+  return Boolean(dictionarySet && dictionarySet.size && dictionarySet.has(normalized));
 }
 
 function validateWords(words) {
@@ -190,7 +101,7 @@ function searchWords(pattern, limit = 10) {
   if (!pattern) return [];
   const regex = new RegExp(pattern.replace(/\*/g, '.*').toUpperCase());
   const matches = [];
-  for (const word of dictionaryWords) {
+  for (const word of dictionarySet) {
     if (regex.test(word)) {
       matches.push(word);
       if (matches.length >= limit) break;

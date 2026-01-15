@@ -25,8 +25,6 @@ const { listGames } = require('./controllers/gameController.cjs');
 
 // === SERVICES ===
 const tournamentScheduler = require('./services/tournamentScheduler.cjs');
-const blockchainListener = require('./services/blockchainListener.cjs');
-const submitterService = require('./services/submitterService.cjs');
 const logger = require('./lib/logger.cjs');
 const memoryDiagnostics = require('./lib/memoryDiagnostics.cjs');
 
@@ -106,6 +104,23 @@ app.use((req, res, next) => {
 const cors = require('cors');
 
 // Full allowed origins list
+function parseCsvEnv(name) {
+  const raw = process.env[name];
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+const extraAllowedOrigins = parseCsvEnv('CORS_ALLOWED_ORIGINS');
+const allowedHostSuffixes = parseCsvEnv('CORS_ALLOWED_HOST_SUFFIXES');
+
+// If running on Fly, allow the default app hostname unless explicitly blocked.
+// (You can still override/extend via CORS_ALLOWED_ORIGINS.)
+const flyAppName = process.env.FLY_APP_NAME;
+const flyDefaultOrigin = flyAppName ? `https://${flyAppName}.fly.dev` : null;
+
 const allowedOrigins = [
   "http://localhost:41",
   "http://127.0.0.1:41",
@@ -128,8 +143,13 @@ const allowedOrigins = [
   "https://scrabble-frontend.vercel.app",
   "https://scrabble-frontend-lyart.vercel.app",
 
-  // Backend endpoint (Koyeb)
-  "https://leading-deer-base-scrabble-7f7c59ec.koyeb.app"
+  // Historical backend host removed; Fly is the active host.
+
+  // Fly default hostname (when applicable)
+  ...(flyDefaultOrigin ? [flyDefaultOrigin] : []),
+
+  // Operator-provided origins
+  ...extraAllowedOrigins,
 ];
 
 // Allow LAN ranges automatically
@@ -146,6 +166,18 @@ function isAllowedOrigin(origin) {
     /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(origin)
   ) {
     return true;
+  }
+
+  // Allow operator-defined hostname suffixes (e.g. `.fly.dev`, `.basescrabble.xyz`).
+  if (allowedHostSuffixes.length) {
+    try {
+      const hostname = new URL(origin).hostname;
+      if (allowedHostSuffixes.some((suffix) => suffix && hostname.endsWith(suffix))) {
+        return true;
+      }
+    } catch (_) {
+      // Ignore parse errors and fall through to block.
+    }
   }
 
   console.log("❌ Blocked CORS origin:", origin);
@@ -244,6 +276,9 @@ app.use(sanitizeBody);
 
 // Register health route
 app.use('/api/health', require('./routes/health.cjs'));
+
+// Readiness route (DB reachability)
+app.use('/api/ready', require('./routes/ready.cjs'));
 
 // Lightweight diagnostics endpoint (no auth, safe fields only)
 app.get('/api/diag', (req, res) => {
@@ -378,28 +413,76 @@ app.use('*', (req, res) => {
 });
 
 // === START SERVICES ===
+let submitterService = null;
+let blockchainListener = null;
+
 const startServices = async () => {
+  const failFastOnDb = process.env.FAIL_FAST_ON_DB === 'true';
+  const connectTimeoutMs = Number(process.env.DB_CONNECT_TIMEOUT_MS || 8000);
+
+  logger.info('services:starting', { failFastOnDb, connectTimeoutMs });
+
+  // Prisma can hang on initial connection in some network failure modes.
+  // If FAIL_FAST_ON_DB=true, force-exit after the timeout window regardless.
+  let hardFailFastTimer = null;
+  if (failFastOnDb) {
+    hardFailFastTimer = setTimeout(() => {
+      try {
+        logger.error('services:fail-fast-timeout-exit', { connectTimeoutMs });
+      } catch (_) {
+        // no-op
+      }
+      process.exit(1);
+    }, connectTimeoutMs + 250);
+  }
+
   try {
-    await prisma.$connect();
+    await Promise.race([
+      prisma.$connect(),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`database connect timeout after ${connectTimeoutMs}ms`)),
+          connectTimeoutMs
+        )
+      ),
+    ]);
     logger.info('services:database-connected');
+  } catch (err) {
+    logger.error('services:database-connect-failed', { message: err?.message, stack: err?.stack });
+    if (failFastOnDb) {
+      logger.error('services:fail-fast-exit', { reason: 'database-connect-failed' });
+      process.exit(1);
+    }
+    return;
+  } finally {
+    if (hardFailFastTimer) {
+      clearTimeout(hardFailFastTimer);
+      hardFailFastTimer = null;
+    }
+  }
+
+  try {
     await tournamentScheduler.initialize();
-    
-    // Only start blockchain listener if enabled (disable for local dev to avoid QuickNode limits)
+
+    // Only start blockchain listener if enabled.
     if (process.env.ENABLE_BLOCKCHAIN_LISTENER !== 'false') {
+      blockchainListener = require('./services/blockchainListener.cjs');
       blockchainListener.startListening();
     } else {
       logger.warn('services:blockchain-listener-disabled');
     }
-    
-    // Temporarily disable submitter to test stability
+
+    // Only start submitter if enabled.
     if (process.env.ENABLE_SUBMITTER !== 'false') {
+      submitterService = require('./services/submitterService.cjs');
       submitterService.start();
     } else {
       logger.warn('services:submitter-disabled');
     }
+
     logger.info('services:initialized');
   } catch (err) {
-    logger.error('services:init-failed', { message: err.message, stack: err.stack });
+    logger.error('services:init-failed', { message: err?.message, stack: err?.stack });
   }
 };
 
@@ -442,7 +525,13 @@ process.on('beforeExit', (code) => {
 
 process.on('SIGTERM', async () => {
   logger.warn('process:sigterm');
-  submitterService.stop();
+  try {
+    submitterService?.stop?.();
+  } catch (_) {
+    try {
+      require('./services/submitterService.cjs')?.stop?.();
+    } catch (_) {}
+  }
   tournamentScheduler.stop();
   await prisma.$disconnect();
   process.exit(0);

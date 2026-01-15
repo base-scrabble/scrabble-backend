@@ -1,4 +1,4 @@
-name: Koyeb Keepalive
+name: Fly Keepalive
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: koyeb-keepalive
+  group: fly-keepalive
   cancel-in-progress: true
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="https://leading-deer-base-scrabble-7f7c59ec.koyeb.app"
+          BASE_URL="https://basescrabble-backend.fly.dev"
 
           for path in "/api/health" "/api/diag"; do
             url="${BASE_URL}${path}"

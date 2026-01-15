@@ -13,7 +13,7 @@ Backend API + Socket.IO server for the Based Scrabble app at https://basescrabbl
 ## Deployments (current)
 
 - **Frontend:** Vercel
-- **Backend:** Koyeb
+- **Backend:** Fly.io
 - **Database:** Neon Postgres
 
 ## API surface

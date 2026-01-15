@@ -1,0 +1,19 @@
+node_modules
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+.env
+.env.*
+.git
+.gitignore
+.vscode
+.DS_Store
+
+# Local artifacts
+coverage
+test-results
+diagnostics
+*.heapsnapshot
+
+# Local uploads are not portable (ephemeral on most hosts)
+uploads
