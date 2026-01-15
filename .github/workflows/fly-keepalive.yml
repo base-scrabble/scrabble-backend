@@ -1,6 +1,6 @@
 name: Fly Keepalive
 
-on:
+"on":
   schedule:
     # GitHub scheduled workflows run at best-effort granularity (typically >= 5 minutes)
     - cron: '*/5 * * * *'

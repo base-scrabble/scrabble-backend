@@ -1,6 +1,6 @@
 # Based Scrabble Backend
 
-Backend API + Socket.IO server for the Based Scrabble app at https://basescrabble.xyz.
+Backend API + Socket.IO server for the Based Scrabble app at <https://basescrabble.xyz>.
 
 **Current reality (important):** the live app is **free-to-play + waitlist**. Any “staked/on-chain settlement” plumbing that exists in this repo should be treated as **optional / not enabled by default** unless you explicitly turn it on.
 
@@ -88,7 +88,7 @@ npm run dev
 
 Health check:
 
-- http://localhost:3000/api/health
+- <http://localhost:3000/api/health>
 
 ## Tests
 
