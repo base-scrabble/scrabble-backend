@@ -1,30 +1,31 @@
 const jwt = require('jsonwebtoken');
-const axios = require('axios');
+const jwksRsa = require('jwks-rsa');
 
-let cachedKeys = null;
-const CACHE_TTL = 3600000; // 1 hour in ms
-let lastFetch = 0;
+const JWKS_URI = process.env.PRIVY_JWKS_URL || 'https://auth.privy.io/.well-known/jwks.json';
 
-const fetchPrivyKeys = async () => {
-  if (cachedKeys && Date.now() - lastFetch < CACHE_TTL) return cachedKeys;
-  try {
-    const { data } = await axios.get('https://auth.privy.io/.well-known/jwks.json', { timeout: 5000 });
-    cachedKeys = data;
-    lastFetch = Date.now();
-    return cachedKeys;
-  } catch (error) {
-    console.error('Failed to fetch Privy keys:', error.message);
-    throw new Error('Unable to fetch Privy public keys');
-  }
-};
+const jwksClient = jwksRsa({
+  jwksUri: JWKS_URI,
+  cache: true,
+  cacheMaxEntries: 10,
+  cacheMaxAge: 60 * 60 * 1000,
+  rateLimit: true,
+  jwksRequestsPerMinute: 10,
+  timeout: 5000,
+});
 
-const getPublicKey = async (kid) => {
-  const keys = await fetchPrivyKeys();
-  const jwk = keys.keys.find(k => k.kid === kid);
-  if (!jwk) throw new Error('Invalid Privy key ID');
-  const pubKey = `-----BEGIN PUBLIC KEY-----\n${Buffer.from(jwk.n, 'base64').toString('base64')}\n-----END PUBLIC KEY-----`;
-  return pubKey;
-};
+async function getPublicKey(kid) {
+  const key = await jwksClient.getSigningKey(kid);
+  return key.getPublicKey();
+}
+
+async function verifyPrivyJwt(token) {
+  const decoded = jwt.decode(token, { complete: true });
+  const kid = decoded?.header?.kid;
+  if (!kid) throw new Error('Missing kid');
+
+  const publicKey = await getPublicKey(kid);
+  return jwt.verify(token, publicKey, { algorithms: ['RS256'] });
+}
 
 const verifyPrivyToken = async (req, res, next) => {
   try {
@@ -34,16 +35,16 @@ const verifyPrivyToken = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const [header] = token.split('.');
-    const decodedHeader = JSON.parse(Buffer.from(header, 'base64').toString('utf8'));
-    const pubKey = await getPublicKey(decodedHeader.kid);
+    const payload = await verifyPrivyJwt(token);
 
-    const payload = jwt.verify(token, pubKey, { algorithms: ['RS256'] });
-    req.user = {
-      wallet_address: payload.wallet_address,
-      email: payload.email,
+    const privyUser = {
       sub: payload.sub,
+      email: payload.email,
+      wallet_address: payload.wallet_address,
     };
+
+    req.privy = privyUser;
+    if (!req.user) req.user = privyUser;
 
     next();
   } catch (err) {
@@ -52,4 +53,4 @@ const verifyPrivyToken = async (req, res, next) => {
   }
 };
 
-module.exports = { verifyPrivyToken };
+module.exports = { verifyPrivyToken, verifyPrivyJwt };

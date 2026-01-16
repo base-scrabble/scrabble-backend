@@ -6,6 +6,7 @@ const { generateToken, authMiddleware } = require('../middleware/auth.cjs');
 const signatureService = require('../services/signatureService.cjs');
 const nonceService = require('../services/nonceService.cjs');
 const { ensureUser } = require('../controllers/userController.cjs');
+const { verifyPrivyToken } = require('../middleware/verifyPrivyToken.cjs');
 
 /**
  * @route GET /api/auth/check
@@ -13,6 +14,20 @@ const { ensureUser } = require('../controllers/userController.cjs');
  */
 router.get('/check', (req, res) => {
   res.json({ success: true, message: 'Auth service reachable', timestamp: new Date().toISOString() });
+});
+
+/**
+ * @route GET /api/auth/me
+ * @desc Validate the caller's Privy access token and return identity claims
+ * @access Privy (Bearer token)
+ */
+router.get('/me', verifyPrivyToken, (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      privy: req.privy || null,
+    },
+  });
 });
 
 /**
