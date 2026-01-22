@@ -74,6 +74,19 @@ process.on('unhandledRejection', (reason) => {
 const app = express();
 const server = http.createServer(app);
 
+// Surface listen / network errors explicitly (otherwise they can look like a silent exit).
+server.on('error', (err) => {
+  logger.error('server:error', {
+    message: err?.message,
+    code: err?.code,
+    errno: err?.errno,
+    syscall: err?.syscall,
+    address: err?.address,
+    port: err?.port,
+    stack: err?.stack,
+  });
+});
+
 // Proxy-friendly server timeouts.
 // Some edge proxies expect keep-alive connections to remain open > 5s; mismatches can
 // show up client-side as ERR_EMPTY_RESPONSE and upstream 5xx.
@@ -115,6 +128,7 @@ function parseCsvEnv(name) {
 
 const extraAllowedOrigins = parseCsvEnv('CORS_ALLOWED_ORIGINS');
 const allowedHostSuffixes = parseCsvEnv('CORS_ALLOWED_HOST_SUFFIXES');
+const allowedOriginPrefixes = parseCsvEnv('CORS_ALLOWED_ORIGIN_PREFIXES');
 
 // If running on Fly, allow the default app hostname unless explicitly blocked.
 // (You can still override/extend via CORS_ALLOWED_ORIGINS.)
@@ -156,14 +170,25 @@ const allowedOrigins = [
 function isAllowedOrigin(origin) {
   if (!origin) return false;
 
+  // Normalize common formatting differences.
+  // Browsers send Origin without a trailing slash, but humans often include it.
+  const normalizedOrigin = typeof origin === 'string' ? origin.replace(/\/+$/, '') : origin;
+
   // Exact matches
-  if (allowedOrigins.includes(origin)) return true;
+  if (allowedOrigins.includes(normalizedOrigin)) return true;
+
+  // Configurable origin prefixes (useful for LAN/dev IPs that can change)
+  if (allowedOriginPrefixes.length) {
+    if (allowedOriginPrefixes.some((prefix) => prefix && normalizedOrigin.startsWith(prefix))) {
+      return true;
+    }
+  }
 
   // LAN ranges
   if (
-    origin.startsWith("http://192.168.") ||
-    origin.startsWith("http://10.") ||
-    /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(origin)
+    normalizedOrigin.startsWith("http://192.168.") ||
+    normalizedOrigin.startsWith("http://10.") ||
+    /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(normalizedOrigin)
   ) {
     return true;
   }
@@ -515,12 +540,22 @@ process.on('uncaughtException', (error) => {
   // Don't exit - log and continue
 });
 
-process.on('exit', (code) => {
-  logger.warn('process:exit', { code });
+// IMPORTANT: avoid using the async file logger in exit/beforeExit.
+// `beforeExit` can fire repeatedly if the handler schedules async work.
+process.once('exit', (code) => {
+  try {
+    console.warn(`${new Date().toISOString()} [WARN] process:exit ${JSON.stringify({ code })}`);
+  } catch (_) {
+    // no-op
+  }
 });
 
-process.on('beforeExit', (code) => {
-  logger.warn('process:before-exit', { code });
+process.once('beforeExit', (code) => {
+  try {
+    console.warn(`${new Date().toISOString()} [WARN] process:before-exit ${JSON.stringify({ code })}`);
+  } catch (_) {
+    // no-op
+  }
 });
 
 process.on('SIGTERM', async () => {

@@ -6,10 +6,22 @@ const { ethers } = require('ethers');
 const { prisma } = require('../lib/prisma.cjs');
 
 const CONTRACT_ADDRESS = process.env.SCRABBLE_GAME_ADDRESS;
-const DEFAULT_HTTP_RPC = 'https://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
-const DEFAULT_WSS_RPC = 'wss://misty-proportionate-owl.base-sepolia.quiknode.pro/3057dcb195d42a6ae388654afca2ebb055b9bfd9/';
-const RPC_URL = process.env.RPC_URL || DEFAULT_HTTP_RPC;
-const RPC_WSS_URL = process.env.RPC_WSS_URL || DEFAULT_WSS_RPC;
+// IMPORTANT: do not hardcode RPC endpoints (they often include secrets).
+const RPC_URL = process.env.RPC_URL;
+const RPC_WSS_URL = process.env.RPC_WSS_URL;
+
+// Provide a static chain id to ethers providers to avoid noisy "failed to detect network" logs.
+// Default to Base Sepolia (84532) since that's what this repo targets in dev.
+const CHAIN_ID = Number(process.env.CHAIN_ID || process.env.LISTENER_CHAIN_ID || 84532);
+const PROVIDER_NETWORK = Number.isFinite(CHAIN_ID) ? CHAIN_ID : undefined;
+
+let preferWebSocket = true;
+
+function wsEnabled() {
+  if (process.env.LISTENER_FORCE_HTTP === 'true') return false;
+  if (process.env.LISTENER_TRANSPORT === 'http') return false;
+  return preferWebSocket;
+}
 
 let provider = null;
 let contract = null;
@@ -24,12 +36,19 @@ const ABI = [
 ];
 
 function buildProvider() {
-  if (RPC_WSS_URL && RPC_WSS_URL.startsWith('wss')) {
+  if (wsEnabled() && RPC_WSS_URL && RPC_WSS_URL.startsWith('wss')) {
     console.log('🔌 BlockchainListener using WebSocket provider (RPC_WSS_URL)');
-    return new ethers.WebSocketProvider(RPC_WSS_URL);
+    return PROVIDER_NETWORK
+      ? new ethers.WebSocketProvider(RPC_WSS_URL, PROVIDER_NETWORK)
+      : new ethers.WebSocketProvider(RPC_WSS_URL);
+  }
+  if (!RPC_URL) {
+    throw new Error('RPC_URL not configured (set RPC_URL in backend env)');
   }
   console.log('🔌 BlockchainListener using HTTP provider (RPC_URL)');
-  return new ethers.JsonRpcProvider(RPC_URL);
+  return PROVIDER_NETWORK
+    ? new ethers.JsonRpcProvider(RPC_URL, PROVIDER_NETWORK)
+    : new ethers.JsonRpcProvider(RPC_URL);
 }
 
 function getProviderWebSocket(p) {
@@ -43,6 +62,9 @@ function attachWebSocketHandlers(p) {
   // If the underlying socket errors and nobody is listening, Node can surface it as an uncaughtException.
   ws.on('error', (err) => {
     console.warn('⚠️ WebSocket error:', err?.message || err);
+    // If the WS provider is flakey or blocked locally (TLS/proxy/provider issue),
+    // fall back to HTTP polling for the rest of this process.
+    preferWebSocket = false;
     try {
       ws.terminate?.();
     } catch (_) {}
@@ -51,6 +73,7 @@ function attachWebSocketHandlers(p) {
 
   ws.on('close', (code, reason) => {
     console.warn('⚠️ WebSocket closed:', code, reason);
+    preferWebSocket = false;
     scheduleReconnect();
   });
 }
@@ -135,7 +158,13 @@ async function startListening() {
       registerShutdownHandler();
     } else {
       console.log('🔁 Starting HTTP polling for events...');
-      setInterval(async () => {
+      let pollingBackoffMs = 15_000;
+      let consecutivePollErrors = 0;
+      let lastPollErrorLogAt = 0;
+      let pollStopped = false;
+
+      const pollOnce = async () => {
+        if (pollStopped) return;
         try {
           const latestBlock = await provider.getBlockNumber();
           const fromBlock = Math.max(0, latestBlock - 100);
@@ -144,10 +173,35 @@ async function startListening() {
 
           const tourEvents = await contract.queryFilter('TournamentConcluded', fromBlock, latestBlock);
           for (const e of tourEvents) await handleTournamentConcluded(...e.args, e);
+
+          // Success: reset backoff.
+          consecutivePollErrors = 0;
+          pollingBackoffMs = 15_000;
         } catch (err) {
-          console.error('Polling error:', err.message);
+          consecutivePollErrors++;
+
+          // Back off exponentially on transport/TLS issues.
+          pollingBackoffMs = Math.min(300_000, pollingBackoffMs * 2);
+
+          const now = Date.now();
+          const shouldLog = now - lastPollErrorLogAt > 15_000;
+          if (shouldLog) {
+            lastPollErrorLogAt = now;
+            console.error('Polling error:', err?.message || err);
+            if (consecutivePollErrors >= 3) {
+              console.warn(
+                `Polling degraded (${consecutivePollErrors} consecutive failures). ` +
+                `Next retry in ${Math.round(pollingBackoffMs / 1000)}s. ` +
+                `Set LISTENER_FORCE_HTTP=true to skip WS, or disable listener for dev.`,
+              );
+            }
+          }
+        } finally {
+          setTimeout(pollOnce, pollingBackoffMs);
         }
-      }, 15000);
+      };
+
+      pollOnce();
       registerShutdownHandler();
     }
 
