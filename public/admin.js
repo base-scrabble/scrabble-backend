@@ -1,4 +1,4 @@
-const API_BASE = 'https://scrabble-backend-sigma.vercel.app/api'; // Global, no process.env in browser
+const API_BASE = `${window.location.origin.replace(/\/+$/, '')}/api`; // No process.env in browser
 
 class AdminCMS {
     constructor() {

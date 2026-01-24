@@ -1,4 +1,4 @@
-const API_BASE = 'https://scrabble-backend-sigma.vercel.app/api';
+const API_BASE = `${window.location.origin.replace(/\/+$/, '')}/api`;
 
 let users = [];
 let games = [];
